@@ -1,8 +1,9 @@
-                                                             Free launcher
+                                                             noma launcher
 
 
 
-<img width="212" height="212" alt="free launcher icon" src="https://github.com/user-attachments/assets/c54363d8-a699-481a-b5ab-ef705061a60f" />
+<img width="1254" height="1254" alt="1790754880178" src="https://github.com/user-attachments/assets/bea14944-77ec-4613-8547-17295175cd4f" />
+
 
 
 
