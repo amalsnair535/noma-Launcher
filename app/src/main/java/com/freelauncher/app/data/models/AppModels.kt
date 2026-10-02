@@ -18,7 +18,9 @@ data class AppItem(
     val categoryTitle: String = category.title,
     val monogram: String = "",
     val isPinned: Boolean = false,
-    val pinIndex: Int = -1
+    val pinIndex: Int = -1,
+    val userSerialNumber: Long = 0L,
+    val isDualApp: Boolean = false
 )
 
 enum class AppCategory(val title: String) {

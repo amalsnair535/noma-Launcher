@@ -1,10 +1,12 @@
 package com.freelauncher.app.ui.viewmodel
 
 import android.app.Application
+import android.content.ContentUris
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
+import android.provider.AlarmClock
 import android.provider.Settings
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -21,6 +23,7 @@ import com.freelauncher.app.ui.components.TimeCardHorizontalAlign
 import com.freelauncher.app.ui.theme.LauncherFont
 import com.freelauncher.app.ui.theme.LauncherThemeMode
 import com.freelauncher.app.ui.theme.LauncherWallpaper
+import timber.log.Timber
 import androidx.core.net.toUri
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -29,6 +32,7 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.Date
+import kotlin.math.roundToInt
 import kotlin.time.Duration.Companion.milliseconds
 
 enum class LauncherScreen {
@@ -52,7 +56,7 @@ data class LauncherUiState(
     val wallpaperId: String = "cyber_noir",
     val customWallpaperUri: String? = null,
     val wallpaperDim: Float = 0.25f,
-    val showMonograms: Boolean = true,
+    val showMonograms: Boolean = false,
     val customGreeting: String = "auto",
     val installedApps: List<AppItem> = emptyList(),
     val pinnedApps: List<AppItem> = emptyList(),
@@ -87,10 +91,26 @@ data class LauncherUiState(
     val isPinnedOnlyLocked: Boolean = false,
     val pinnedLockFeedbackMessage: String? = null,
     val isBiometricLockEnabled: Boolean = false,
-    val showBiometricAuthDialog: Boolean = false,
-    val biometricAuthError: String? = null,
+    val pendingBiometricUnlock: Boolean = false,
+    val biometricAuthTrigger: Long = 0L,
+    val lockMethod: String = "pin",
+    val customPin: String = "",
+    val showSetPinDialog: Boolean = false,
+    val showPinUnlockSheet: Boolean = false,
     val isSearchOnlyMode: Boolean = false,
     val showOnboardingGuide: Boolean = false,
+    val showRearrangePinnedDialog: Boolean = false,
+    val showAboutSheet: Boolean = false,
+    val showProSheet: Boolean = false,
+    val showBackupSheet: Boolean = false,
+    val isProUnlocked: Boolean = false,
+    val showWeatherBatteryGlance: Boolean = false,
+    val temperatureUnit: String = "F",
+    val enableDoubleTapToSleep: Boolean = false,
+    val sixAppsScale: Float = 0.9f,
+    val batteryLevel: Int = 100,
+    val isBatteryCharging: Boolean = false,
+    val weatherText: String? = null,
 )
 
 class LauncherViewModel(application: Application) : AndroidViewModel(application) {
@@ -103,6 +123,8 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     private val _currentTime = MutableStateFlow(Date())
     val currentTime: StateFlow<Date> = _currentTime.asStateFlow()
 
+    private val weatherService = com.freelauncher.app.data.service.WeatherService()
+
     init {
         startTimeTicker()
         loadSettings()
@@ -110,6 +132,7 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         refreshApps()
         syncFeeds()
         refreshDigitalWellbeingStats()
+        startBatteryAndWeatherMonitoring()
     }
 
     private fun startTimeTicker() {
@@ -135,13 +158,20 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
                 val wallpaperId = settingsMap["wallpaper_id"] ?: "cyber_noir"
                 val customWallpaperUri = settingsMap["custom_wallpaper_uri"]?.takeIf { it.isNotBlank() }
                 val wallpaperDim = settingsMap["wallpaper_dim"]?.toFloatOrNull() ?: 0.25f
-                val showMonograms = settingsMap["show_monograms"] != "false"
+                val showMonograms = settingsMap["show_monograms"] == "true"
                 val greeting = settingsMap["custom_greeting"] ?: "auto"
                 val biometricLock = settingsMap["biometric_lock_enabled"] == "true"
                 val gestureHints = settingsMap["show_gesture_hints"] == "true"
                 val showNewsFeed = settingsMap["show_news_feed"] != "false"
                 val showTimeAway = settingsMap["show_time_away"] != "false"
                 val onboardingCompleted = settingsMap["onboarding_completed"] == "true"
+                val showWeatherGlance = settingsMap["show_weather_battery_glance"] == "true"
+                val tempUnit = settingsMap["temperature_unit"] ?: "F"
+                val doubleTapToSleep = settingsMap["enable_double_tap_to_sleep"] == "true"
+                val sixAppsScale = settingsMap["six_apps_scale"]?.toFloatOrNull() ?: 0.9f
+                val lockMethod = settingsMap["lock_method"] ?: "pin"
+                val customPin = settingsMap["custom_launcher_pin"] ?: ""
+                val isProUnlocked = settingsMap["is_pro_unlocked"] == "true"
 
                 _uiState.update { state ->
                     state.copy(
@@ -159,10 +189,17 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
                         showMonograms = showMonograms,
                         customGreeting = greeting,
                         isBiometricLockEnabled = biometricLock,
+                        lockMethod = lockMethod,
+                        customPin = customPin,
                         showGestureHints = gestureHints,
                         showNewsFeed = showNewsFeed,
                         showTimeAway = showTimeAway,
                         showOnboardingGuide = !onboardingCompleted,
+                        showWeatherBatteryGlance = showWeatherGlance,
+                        temperatureUnit = tempUnit,
+                        enableDoubleTapToSleep = doubleTapToSleep,
+                        sixAppsScale = sixAppsScale.coerceIn(0.6f, 1.8f),
+                        isProUnlocked = isProUnlocked,
                     )
                 }
             }
@@ -349,7 +386,7 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
 
     fun navigateTo(screen: LauncherScreen) {
         if (_uiState.value.isPinnedOnlyLocked && (screen != LauncherScreen.SIX_APPS)) {
-            _uiState.update { it.copy(pinnedLockFeedbackMessage = "Focus Mode Locked • Triple-tap to exit") }
+            _uiState.update { it.copy(pinnedLockFeedbackMessage = "UltraFocus Mode Locked • Triple-tap to exit") }
             return
         }
         _uiState.update { 
@@ -361,27 +398,35 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
+    private var pendingSearchUnlock: Boolean = false
+    private var pendingDisableBiometric: Boolean = false
+    private var pendingSwitchLockMethod: String? = null
+
     fun openSearchFromHome() {
         if (_uiState.value.isPinnedOnlyLocked) {
-            _uiState.update { it.copy(pinnedLockFeedbackMessage = "Focus Mode Locked • Triple-tap to exit") }
+            _uiState.update { it.copy(pinnedLockFeedbackMessage = "UltraFocus Mode Locked • Triple-tap to exit") }
             return
         }
-        _uiState.update {
-            it.copy(
-                isSearchOnlyMode = true,
-                searchQuery = "",
-                currentScreen = LauncherScreen.ALL_APPS,
-            )
-        }
-    }
-
-    fun exitSearchOnlyMode() {
-        _uiState.update {
-            it.copy(
-                isSearchOnlyMode = false,
-                searchQuery = "",
-                currentScreen = LauncherScreen.HOME,
-            )
+        if (_uiState.value.isBiometricLockEnabled) {
+            pendingSearchUnlock = true
+            pendingDisableBiometric = false
+            if (_uiState.value.lockMethod == "pin") {
+                if (_uiState.value.customPin.isBlank()) {
+                    _uiState.update { it.copy(showSetPinDialog = true) }
+                } else {
+                    _uiState.update { it.copy(showPinUnlockSheet = true) }
+                }
+            } else {
+                _uiState.update { it.copy(pendingBiometricUnlock = true, biometricAuthTrigger = it.biometricAuthTrigger + 1) }
+            }
+        } else {
+            _uiState.update {
+                it.copy(
+                    isSearchOnlyMode = true,
+                    searchQuery = "",
+                    currentScreen = LauncherScreen.ALL_APPS,
+                )
+            }
         }
     }
 
@@ -399,6 +444,30 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
 
     fun setMultiPinDialogVisible(visible: Boolean) {
         _uiState.update { it.copy(showMultiPinDialog = visible) }
+    }
+
+    fun setRearrangePinnedDialogVisible(visible: Boolean) {
+        _uiState.update { it.copy(showRearrangePinnedDialog = visible) }
+    }
+
+    fun movePinnedAppUp(appId: String) {
+        val currentPinned = _uiState.value.pinnedApps.map { it.id }.toMutableList()
+        val idx = currentPinned.indexOf(appId)
+        if (idx > 0) {
+            val item = currentPinned.removeAt(idx)
+            currentPinned.add(idx - 1, item)
+            updatePinnedApps(currentPinned)
+        }
+    }
+
+    fun movePinnedAppDown(appId: String) {
+        val currentPinned = _uiState.value.pinnedApps.map { it.id }.toMutableList()
+        val idx = currentPinned.indexOf(appId)
+        if (idx in 0 until (currentPinned.size - 1)) {
+            val item = currentPinned.removeAt(idx)
+            currentPinned.add(idx + 1, item)
+            updatePinnedApps(currentPinned)
+        }
     }
 
     fun updatePinnedApps(appIds: List<String>) {
@@ -424,24 +493,30 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
 
     fun launchApp(context: Context, app: AppItem) {
         try {
-            val pm = context.packageManager
-            var intent: Intent? = null
+            val launcherApps = context.getSystemService(Context.LAUNCHER_APPS_SERVICE) as? android.content.pm.LauncherApps
+            val userManager = context.getSystemService(Context.USER_SERVICE) as? android.os.UserManager
 
-            // Special handling for Phone/Dialer to ensure dialpad opens directly
-            val lowerPkg = app.packageName.lowercase(java.util.Locale.ROOT)
-            val lowerLabel = app.label.lowercase(java.util.Locale.ROOT)
-            if (lowerPkg.contains("dialer") || lowerPkg.contains("phone") || 
-                lowerLabel.contains("phone") || lowerLabel.contains("dialer")) {
-                val dialIntent = Intent(Intent.ACTION_DIAL).apply {
-                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                }
-                if (dialIntent.resolveActivity(pm) != null) {
-                    intent = dialIntent
+            if (app.isDualApp && launcherApps != null && userManager != null) {
+                val targetUser = userManager.getUserForSerialNumber(app.userSerialNumber)
+                if (targetUser != null) {
+                    val componentName = if (app.activityName.isNotBlank()) {
+                        android.content.ComponentName(app.packageName, app.activityName)
+                    } else {
+                        val activities = launcherApps.getActivityList(app.packageName, targetUser)
+                        activities.firstOrNull()?.componentName
+                    }
+                    if (componentName != null) {
+                        launcherApps.startMainActivity(componentName, targetUser, null, null)
+                        return
+                    }
                 }
             }
 
-            // Try specific launcher activity if available if not already handled
-            if (intent == null && app.activityName.isNotBlank()) {
+            val pm = context.packageManager
+            var intent: Intent? = null
+
+            // Try specific launcher activity for the target app
+            if (app.activityName.isNotBlank()) {
                 val explicitIntent = Intent(Intent.ACTION_MAIN).apply {
                     addCategory(Intent.CATEGORY_LAUNCHER)
                     setClassName(app.packageName, app.activityName)
@@ -465,8 +540,49 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
                 android.widget.Toast.makeText(context, "${app.label} is not installed", android.widget.Toast.LENGTH_SHORT).show()
             }
         } catch (e: Exception) {
-            e.printStackTrace()
+            Timber.e(e)
             android.widget.Toast.makeText(context, "Could not open ${app.label}", android.widget.Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    fun setBackupSheetVisible(visible: Boolean) {
+        if (visible && !_uiState.value.isProUnlocked) {
+            setProSheetVisible(true)
+        } else {
+            _uiState.update { it.copy(showBackupSheet = visible) }
+        }
+    }
+
+    fun exportBackupJson(): String {
+        val state = _uiState.value
+        val json = org.json.JSONObject().apply {
+            put("wallpaper_id", state.wallpaperId)
+            put("theme_mode", state.themeMode.name)
+            put("font_family", state.fontFamily.name)
+            put("clock_style", state.clockStyle.name)
+            put("show_monograms", state.showMonograms)
+            put("six_apps_scale", state.sixAppsScale)
+            put("pinned_app_ids", org.json.JSONArray(state.pinnedApps.map { it.id }))
+        }
+        return json.toString(2)
+    }
+
+    fun importBackupJson(jsonStr: String): Boolean {
+        return try {
+            val json = org.json.JSONObject(jsonStr)
+            if (json.has("wallpaper_id")) setWallpaper(json.getString("wallpaper_id"))
+            if (json.has("font_family")) setFontFamily(LauncherFont.valueOf(json.getString("font_family")))
+            if (json.has("clock_style")) setClockStyle(ClockStyle.valueOf(json.getString("clock_style")))
+            if (json.has("show_monograms")) setShowMonograms(json.getBoolean("show_monograms"))
+            if (json.has("six_apps_scale")) setSixAppsScale(json.getDouble("six_apps_scale").toFloat())
+            if (json.has("pinned_app_ids")) {
+                val arr = json.getJSONArray("pinned_app_ids")
+                val ids = (0 until arr.length()).map { arr.getString(it) }
+                updatePinnedApps(ids)
+            }
+            true
+        } catch (_: Exception) {
+            false
         }
     }
 
@@ -477,7 +593,7 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
             }
             context.startActivity(intent)
         } catch (e: Exception) {
-            e.printStackTrace()
+            Timber.e("Error opening web URL: %s", e.message)
         }
     }
 
@@ -493,36 +609,77 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
-    // Notes
-    fun addNote(content: String) {
-        viewModelScope.launch {
-            repository.addNote(content)
+    fun openClockApp(context: Context) {
+        val clockIntents = listOf(
+            Intent(AlarmClock.ACTION_SHOW_ALARMS),
+            Intent(AlarmClock.ACTION_SET_ALARM),
+            Intent(Intent.ACTION_MAIN).apply {
+                addCategory(Intent.CATEGORY_LAUNCHER)
+                component = android.content.ComponentName("com.google.android.deskclock", "com.android.deskclock.DeskClock")
+            },
+            Intent(Intent.ACTION_MAIN).apply {
+                addCategory(Intent.CATEGORY_LAUNCHER)
+                component = android.content.ComponentName("com.android.deskclock", "com.android.deskclock.DeskClock")
+            },
+            Intent(Intent.ACTION_MAIN).apply {
+                addCategory(Intent.CATEGORY_LAUNCHER)
+                component = android.content.ComponentName("com.sec.android.app.clockpackage", "com.sec.android.app.clockpackage.ClockPackage")
+            }
+        )
+
+        for (intent in clockIntents) {
+            try {
+                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                context.startActivity(intent)
+                return
+            } catch (_: Exception) {
+                // Try next fallback
+            }
         }
+
+        val pm = context.packageManager
+        val packages = listOf("com.google.android.deskclock", "com.android.deskclock", "com.sec.android.app.clockpackage", "com.coloros.alarmclock", "com.asus.clock")
+        for (pkg in packages) {
+            val launchIntent = pm.getLaunchIntentForPackage(pkg)
+            if (launchIntent != null) {
+                launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                try {
+                    context.startActivity(launchIntent)
+                    return
+                } catch (_: Exception) { }
+            }
+        }
+
+        android.widget.Toast.makeText(context, "Could not open Clock app", android.widget.Toast.LENGTH_SHORT).show()
     }
 
-    fun deleteNote(id: Long) {
-        viewModelScope.launch {
-            repository.deleteNote(id)
+    fun openCalendarApp(context: Context) {
+        val builder = "content://com.android.calendar/time".toUri().buildUpon()
+        ContentUris.appendId(builder, System.currentTimeMillis())
+        val calendarIntent = Intent(Intent.ACTION_VIEW).apply {
+            data = builder.build()
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         }
-    }
+        try {
+            context.startActivity(calendarIntent)
+            return
+        } catch (_: Exception) {
+            // Try package fallback
+            val pm = context.packageManager
+            val packages = listOf("com.google.android.calendar", "com.android.calendar", "com.samsung.android.calendar")
+            for (pkg in packages) {
+                val launchIntent = pm.getLaunchIntentForPackage(pkg)
+                if (launchIntent != null) {
+                    launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    try {
+                        context.startActivity(launchIntent)
+                        return
+                    } catch (_: Exception) { }
+                }
+            }
+        }
 
-    // Calendar
-    fun addCalendarEvent(title: String, eventDate: Long, priority: String = "Normal") {
-        viewModelScope.launch {
-            repository.addCalendarEvent(title, eventDate, priority)
-        }
-    }
-
-    fun toggleEventCompletion(event: CalendarEventEntity) {
-        viewModelScope.launch {
-            repository.toggleEventCompletion(event)
-        }
-    }
-
-    fun deleteCalendarEvent(id: Long) {
-        viewModelScope.launch {
-            repository.deleteCalendarEvent(id)
-        }
+        android.widget.Toast.makeText(context, "Could not open Calendar app", android.widget.Toast.LENGTH_SHORT).show()
     }
 
     // RSS / News
@@ -560,51 +717,6 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
-    private var focusTimerJob: kotlinx.coroutines.Job? = null
-
-    // Focus session
-    fun startFocusTimer(minutes: Int) {
-        focusTimerJob?.cancel()
-        focusTimerJob = viewModelScope.launch {
-            _uiState.update {
-                it.copy(
-                    focusTimerSecondsLeft = minutes * 60,
-                    isFocusTimerRunning = true,
-                    isPinnedOnlyLocked = true,
-                    currentScreen = LauncherScreen.SIX_APPS,
-                    pinnedLockFeedbackMessage = "Focus Mode Locked • Triple-tap to exit",
-                )
-            }
-            while (_uiState.value.isFocusTimerRunning && (_uiState.value.focusTimerSecondsLeft > 0)) {
-                delay(1000.milliseconds)
-                _uiState.update { it.copy(focusTimerSecondsLeft = it.focusTimerSecondsLeft - 1) }
-            }
-            if ((_uiState.value.focusTimerSecondsLeft <= 0) && _uiState.value.isFocusTimerRunning) {
-                repository.recordFocusSession(minutes)
-                _uiState.update {
-                    it.copy(
-                        isFocusTimerRunning = false,
-                        isPinnedOnlyLocked = false,
-                        pinnedLockFeedbackMessage = "Focus Session Completed • Unlocked",
-                    )
-                }
-            }
-        }
-    }
-
-    fun stopFocusTimer() {
-        focusTimerJob?.cancel()
-        _uiState.update {
-            it.copy(
-                isFocusTimerRunning = false,
-                focusTimerSecondsLeft = 0,
-                isPinnedOnlyLocked = false,
-                pinnedLockFeedbackMessage = "Focus Session Ended • Unlocked",
-            )
-        }
-        refreshDigitalWellbeingStats()
-    }
-
     // Digital Wellbeing & Focus Stats
     fun refreshDigitalWellbeingStats() {
         viewModelScope.launch(Dispatchers.IO) {
@@ -631,20 +743,6 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         viewModelScope.launch {
             _uiState.update { it.copy(clockStyle = style) }
             repository.updateSetting("clock_style", style.id)
-        }
-    }
-
-    fun setTimeCardVAlign(vAlign: TimeCardVerticalAlign) {
-        viewModelScope.launch {
-            _uiState.update { it.copy(timeCardVAlign = vAlign) }
-            repository.updateSetting("time_card_v_align", vAlign.id)
-        }
-    }
-
-    fun setTimeCardHAlign(hAlign: TimeCardHorizontalAlign) {
-        viewModelScope.launch {
-            _uiState.update { it.copy(timeCardHAlign = hAlign) }
-            repository.updateSetting("time_card_h_align", hAlign.id)
         }
     }
 
@@ -697,6 +795,11 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     }
 
     fun setWallpaper(id: String) {
+        val isCustomOrTheme = id == "custom_gallery" || id.startsWith("custom_theme_")
+        if (isCustomOrTheme && !_uiState.value.isProUnlocked) {
+            _uiState.update { it.copy(showProSheet = true) }
+            return
+        }
         viewModelScope.launch {
             _uiState.update { it.copy(wallpaperId = id) }
             repository.updateSetting("wallpaper_id", id)
@@ -738,10 +841,17 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     }
 
     fun saveCustomWallpaperFromUri(uri: Uri) {
+        if (!_uiState.value.isProUnlocked) {
+            _uiState.update { it.copy(showProSheet = true) }
+            return
+        }
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 val context = getApplication<Application>()
-                val destinationFile = java.io.File(context.filesDir, "custom_wallpaper_image.jpg")
+                context.filesDir.listFiles { file -> file.name.startsWith("custom_wallpaper_") }?.forEach { it.delete() }
+
+                val fileName = "custom_wallpaper_${System.currentTimeMillis()}.jpg"
+                val destinationFile = java.io.File(context.filesDir, fileName)
                 context.contentResolver.openInputStream(uri)?.use { input ->
                     destinationFile.outputStream().use { output ->
                         input.copyTo(output)
@@ -759,7 +869,7 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
                 repository.updateSetting("wallpaper_id", "custom_gallery")
                 repository.updateSetting("custom_wallpaper_uri", savedPath)
             } catch (e: Exception) {
-                e.printStackTrace()
+                Timber.e(e)
             }
         }
     }
@@ -777,21 +887,66 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
-    // Biometric / Fingerprint Lock
+    // Biometric / Fingerprint & PIN Lock
     fun setBiometricLockEnabled(enabled: Boolean) {
-        viewModelScope.launch {
-            _uiState.update { it.copy(isBiometricLockEnabled = enabled) }
-            repository.updateSetting("biometric_lock_enabled", enabled.toString())
+        if (!enabled && _uiState.value.isBiometricLockEnabled) {
+            // Require authentication before disabling lock
+            pendingDisableBiometric = true
+            pendingSearchUnlock = false
+            if (_uiState.value.lockMethod == "pin") {
+                if (_uiState.value.customPin.isBlank()) {
+                    _uiState.update { it.copy(showSetPinDialog = true) }
+                } else {
+                    _uiState.update { it.copy(showPinUnlockSheet = true) }
+                }
+            } else {
+                _uiState.update { it.copy(pendingBiometricUnlock = true, biometricAuthTrigger = it.biometricAuthTrigger + 1) }
+            }
+        } else {
+            viewModelScope.launch {
+                _uiState.update { it.copy(isBiometricLockEnabled = enabled) }
+                repository.updateSetting("biometric_lock_enabled", enabled.toString())
+            }
         }
     }
 
-    fun setBiometricAuthDialogVisible(visible: Boolean, error: String? = null) {
-        _uiState.update {
-            it.copy(
-                showBiometricAuthDialog = visible,
-                biometricAuthError = error,
-            )
+    fun setLockMethod(method: String) {
+        if (method == "biometric" && _uiState.value.lockMethod == "pin" && _uiState.value.isBiometricLockEnabled && _uiState.value.customPin.isNotBlank()) {
+            pendingSwitchLockMethod = "biometric"
+            pendingDisableBiometric = false
+            pendingSearchUnlock = false
+            _uiState.update { it.copy(showPinUnlockSheet = true) }
+        } else {
+            _uiState.update { it.copy(lockMethod = method) }
+            viewModelScope.launch {
+                repository.updateSetting("lock_method", method)
+            }
         }
+    }
+
+    fun setCustomPin(pin: String) {
+        viewModelScope.launch {
+            _uiState.update { it.copy(customPin = pin, showSetPinDialog = false) }
+            repository.updateSetting("custom_launcher_pin", pin)
+            if (!_uiState.value.isBiometricLockEnabled) {
+                setBiometricLockEnabled(true)
+            }
+        }
+    }
+
+    fun setSetPinDialogVisible(visible: Boolean) {
+        _uiState.update { it.copy(showSetPinDialog = visible) }
+    }
+
+    fun setPinUnlockSheetVisible(visible: Boolean) {
+        _uiState.update { it.copy(showPinUnlockSheet = visible) }
+    }
+
+    fun onBiometricPromptHandled() {
+        pendingSearchUnlock = false
+        pendingDisableBiometric = false
+        pendingSwitchLockMethod = null
+        _uiState.update { it.copy(pendingBiometricUnlock = false, showPinUnlockSheet = false) }
     }
 
     fun setOnboardingGuideVisible(visible: Boolean) {
@@ -802,6 +957,17 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         _uiState.update { it.copy(showOnboardingGuide = false) }
         viewModelScope.launch {
             repository.updateSetting("onboarding_completed", "true")
+        }
+    }
+
+    fun setProSheetVisible(visible: Boolean) {
+        _uiState.update { it.copy(showProSheet = visible) }
+    }
+
+    fun unlockProFeatures() {
+        _uiState.update { it.copy(isProUnlocked = true, showProSheet = false) }
+        viewModelScope.launch {
+            repository.updateSetting("is_pro_unlocked", "true")
         }
     }
 
@@ -821,7 +987,7 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             }
             context.startActivity(intent)
-        } catch (e: Exception) {
+        } catch (_: Exception) {
             try {
                 val fallbackIntent = Intent(Settings.ACTION_SETTINGS).apply {
                     addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
@@ -833,11 +999,16 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
 
     fun requestAccessToAllApps() {
         if (_uiState.value.isBiometricLockEnabled) {
-            _uiState.update {
-                it.copy(
-                    showBiometricAuthDialog = true,
-                    biometricAuthError = null,
-                )
+            pendingSearchUnlock = false
+            pendingDisableBiometric = false
+            if (_uiState.value.lockMethod == "pin") {
+                if (_uiState.value.customPin.isBlank()) {
+                    _uiState.update { it.copy(showSetPinDialog = true) }
+                } else {
+                    _uiState.update { it.copy(showPinUnlockSheet = true) }
+                }
+            } else {
+                _uiState.update { it.copy(pendingBiometricUnlock = true, biometricAuthTrigger = it.biometricAuthTrigger + 1) }
             }
         } else {
             _uiState.update { it.copy(currentScreen = LauncherScreen.ALL_APPS) }
@@ -845,12 +1016,46 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     }
 
     fun unlockAllApps() {
-        _uiState.update {
-            it.copy(
-                showBiometricAuthDialog = false,
-                biometricAuthError = null,
-                currentScreen = LauncherScreen.ALL_APPS,
-            )
+        if (pendingSwitchLockMethod != null) {
+            val targetMethod = pendingSwitchLockMethod!!
+            pendingSwitchLockMethod = null
+            pendingDisableBiometric = false
+            pendingSearchUnlock = false
+            _uiState.update {
+                it.copy(
+                    pendingBiometricUnlock = false,
+                    showPinUnlockSheet = false,
+                    lockMethod = targetMethod,
+                )
+            }
+            viewModelScope.launch {
+                repository.updateSetting("lock_method", targetMethod)
+            }
+        } else if (pendingDisableBiometric) {
+            pendingDisableBiometric = false
+            pendingSearchUnlock = false
+            viewModelScope.launch {
+                _uiState.update {
+                    it.copy(
+                        pendingBiometricUnlock = false,
+                        showPinUnlockSheet = false,
+                        isBiometricLockEnabled = false,
+                    )
+                }
+                repository.updateSetting("biometric_lock_enabled", "false")
+            }
+        } else {
+            val wasSearchUnlock = pendingSearchUnlock
+            pendingSearchUnlock = false
+            _uiState.update {
+                it.copy(
+                    pendingBiometricUnlock = false,
+                    showPinUnlockSheet = false,
+                    isSearchOnlyMode = wasSearchUnlock,
+                    searchQuery = if (wasSearchUnlock) "" else it.searchQuery,
+                    currentScreen = LauncherScreen.ALL_APPS,
+                )
+            }
         }
     }
 
@@ -887,13 +1092,116 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
+    fun setDoubleTapToSleepEnabled(enabled: Boolean) {
+        _uiState.update { it.copy(enableDoubleTapToSleep = enabled) }
+        viewModelScope.launch {
+            repository.updateSetting("enable_double_tap_to_sleep", enabled.toString())
+        }
+    }
+
+    fun setSixAppsScale(scale: Float) {
+        val clampedScale = scale.coerceIn(0.6f, 1.8f)
+        _uiState.update { it.copy(sixAppsScale = clampedScale) }
+        viewModelScope.launch {
+            repository.updateSetting("six_apps_scale", clampedScale.toString())
+        }
+    }
+
+    fun setAboutSheetVisible(visible: Boolean) {
+        _uiState.update { it.copy(showAboutSheet = visible) }
+    }
+
+    fun performDoubleTapToSleep(context: Context) {
+        if (com.freelauncher.app.data.service.NomaAccessibilityService.isEnabled() &&
+            com.freelauncher.app.data.service.NomaAccessibilityService.lockScreen(context)) {
+            return
+        }
+
+        android.widget.Toast.makeText(
+            context,
+            "Enable 'noma' in Accessibility Settings to lock screen on double-tap",
+            android.widget.Toast.LENGTH_LONG
+        ).show()
+
+        try {
+            val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            context.startActivity(intent)
+        } catch (e: Exception) {
+            Timber.e(e)
+        }
+    }
+
+    private fun startBatteryAndWeatherMonitoring() {
+        try {
+            val filter = android.content.IntentFilter(Intent.ACTION_BATTERY_CHANGED)
+            val batteryStatus: Intent? = getApplication<Application>().registerReceiver(
+                object : android.content.BroadcastReceiver() {
+                    override fun onReceive(context: Context?, intent: Intent?) {
+                        intent?.let { updateBatteryState(it) }
+                    }
+                }, filter
+            )
+            batteryStatus?.let { updateBatteryState(it) }
+        } catch (e: Exception) {
+            Timber.e(e)
+        }
+
+        viewModelScope.launch {
+            while (isActive) {
+                refreshWeather()
+                delay(1800000.milliseconds)
+            }
+        }
+    }
+
+    private fun updateBatteryState(intent: Intent) {
+        val level = intent.getIntExtra(android.os.BatteryManager.EXTRA_LEVEL, -1)
+        val scale = intent.getIntExtra(android.os.BatteryManager.EXTRA_SCALE, -1)
+        val status = intent.getIntExtra(android.os.BatteryManager.EXTRA_STATUS, -1)
+        val isCharging = status == android.os.BatteryManager.BATTERY_STATUS_CHARGING ||
+                status == android.os.BatteryManager.BATTERY_STATUS_FULL
+        val pct = if (level >= 0 && scale > 0) (level * 100 / scale) else 100
+        _uiState.update { it.copy(batteryLevel = pct, isBatteryCharging = isCharging) }
+    }
+
+    fun refreshWeather() {
+        viewModelScope.launch {
+            val weather = weatherService.fetchCurrentWeather()
+            if (weather != null) {
+                val tempStr = if (_uiState.value.temperatureUnit == "C") {
+                    "${weather.tempC.roundToInt()}°C"
+                } else {
+                    "${weather.tempF.roundToInt()}°F"
+                }
+                _uiState.update { it.copy(weatherText = "$tempStr ${weather.condition}") }
+            }
+        }
+    }
+
+    fun toggleWeatherBatteryGlance(enabled: Boolean) {
+        _uiState.update { it.copy(showWeatherBatteryGlance = enabled) }
+        viewModelScope.launch {
+            repository.updateSetting("show_weather_battery_glance", enabled.toString())
+        }
+    }
+
+    fun setTemperatureUnit(unit: String) {
+        _uiState.update { it.copy(temperatureUnit = unit) }
+        viewModelScope.launch {
+            repository.updateSetting("temperature_unit", unit)
+        }
+        refreshWeather()
+    }
+
     fun togglePinnedOnlyLocked(): Boolean {
         val newStatus = !_uiState.value.isPinnedOnlyLocked
         _uiState.update {
             it.copy(
                 isPinnedOnlyLocked = newStatus,
                 currentScreen = if (newStatus) LauncherScreen.SIX_APPS else it.currentScreen,
-                pinnedLockFeedbackMessage = if (newStatus) "Focus Mode Locked • Triple-tap to exit" else "Focus Mode Unlocked",
+                pinnedLockFeedbackMessage = if (newStatus) "UltraFocus Mode Locked • Triple-tap to exit" else "UltraFocus Mode Unlocked",
             )
         }
         return newStatus

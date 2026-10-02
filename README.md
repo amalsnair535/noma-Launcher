@@ -30,9 +30,9 @@ Gesture Affordances: Minimal left and right edge hint bars indicating available 
 •
 Custom Monograms: Minimalist 1–2 letter monograms with frosted glass borders for each app.
 •
-Triple-Tap Focus Lock: Lock the launcher into Focus Mode / Pinned-Only Mode. Triple-tap anywhere on the screen to toggle lock/unlock with haptic feedback and feedback toasts.
+Triple-Tap UltraFocus Lock: Lock the launcher into UltraFocus Mode / Pinned-Only Mode. Triple-tap anywhere on the screen to toggle lock/unlock with haptic feedback and feedback toasts.
 •
-Pomodoro Focus Sessions: Run timed focus sessions with active countdown timer badges.
+UltraFocus Pomodoro Sessions: Run timed focus sessions with active countdown timer badges.
 •
 Multi-App Pinning Selector: Dialog to pick and reorder quick-slot apps effortlessly.
 
@@ -99,3 +99,24 @@ Uniform Spatial Navigation: 300ms FastOutSlowInEasing slide transitions across a
 High Refresh Rate Optimized: Configured for 120Hz/144Hz high refresh rate display panels.
 •
 Google Play Compliant: Complies with Android 15/16 target SDK standards and Google Play Home Launcher policies.
+
+---
+
+## 🛠 Technical Architecture (For Developers)
+
+### Data Architecture
+The app follows a modern MVVM architecture using Jetpack Compose for the UI layer.
+
+- **Storage**: Local-only persistence using **Room Database**. All user data (notes, feeds, focus sessions) is stored in `LauncherDatabase`.
+- **Repository Pattern**: `LauncherRepository` acts as the single source of truth, abstracting database operations and system-level queries (like fetching installed apps).
+- **State Management**: `LauncherViewModel` manages the UI state using Kotlin **StateFlow**. The `LauncherUiState` data class represents the entire state of the active screen.
+- **Logging**: Uses **Timber** for structured logging. Logs are automatically disabled in production builds.
+
+### Key Services
+- **`DigitalWellbeingService`**: Interfaces with Android's `UsageStatsManager` to calculate focus scores and phone-free time. It uses a single-pass event processing model for performance.
+- **`UniversalSearchManager`**: Performs deep searches across apps, contacts, SMS, and system settings. All search operations are executed locally on-device.
+- **`DateTimeUtils`**: Centralized utility for thread-safe and consistent date/time formatting across the UI.
+
+### Development Setup
+- **Environment Variables**: The app uses `secrets-gradle-plugin`. Copy `.env.example` to `.env` and provide your own API keys (e.g., Gemini).
+- **Dependencies**: Managed via Version Catalogs (`gradle/libs.versions.toml`).

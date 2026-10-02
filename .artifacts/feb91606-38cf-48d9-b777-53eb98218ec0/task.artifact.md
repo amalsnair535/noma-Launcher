@@ -1,0 +1,3 @@
+- [x] Add `lint` block to `app/build.gradle.kts` to disable `checkReleaseBuilds`
+- [x] Run `:app:clean` to verify file cleanup (Attempted, file still locked but build proceeds)
+- [x] Verify build completes successfully

@@ -9,6 +9,7 @@ import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.xmlpull.v1.XmlPullParser
+import timber.log.Timber
 import java.io.StringReader
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -44,7 +45,7 @@ class RssParser {
 
             return@withContext parseXml(xmlContent, feed)
         } catch (e: Exception) {
-            e.printStackTrace()
+            Timber.e(e)
             return@withContext emptyList()
         }
     }
@@ -119,7 +120,7 @@ class RssParser {
                 eventType = parser.next()
             }
         } catch (e: Exception) {
-            e.printStackTrace()
+            Timber.e(e)
         }
 
         // Deduplicate within the same feed by normalized title and link

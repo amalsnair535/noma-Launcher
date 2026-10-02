@@ -1,5 +1,6 @@
 package com.freelauncher.app.ui.screens
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.*
@@ -39,6 +40,10 @@ fun TimeAwayScreen(
     onOpenUsageSettings: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    BackHandler {
+        onNavigate(LauncherScreen.HOME)
+    }
+
     var totalDragX by remember { mutableFloatStateOf(0f) }
     var totalDragY by remember { mutableFloatStateOf(0f) }
 
@@ -227,7 +232,7 @@ fun TimeAwayScreen(
                         )
 
                         Text(
-                            text = "Phone-free time during waking hours today",
+                            text = "Phone-free time today",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.secondary,
                             textAlign = TextAlign.Center
@@ -278,7 +283,7 @@ fun TimeAwayScreen(
                                     modifier = Modifier.size(16.dp)
                                 )
                                 Text(
-                                    text = "Current Break",
+                                    text = "Last Break",
                                     style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
                                     color = MaterialTheme.colorScheme.secondary
                                 )
@@ -289,7 +294,7 @@ fun TimeAwayScreen(
                                 color = MaterialTheme.colorScheme.onSurface
                             )
                             Text(
-                                text = "Since screen off",
+                                text = "Most recent off-phone time",
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.secondary.copy(alpha = 0.7f),
                                 fontSize = 10.sp
@@ -413,7 +418,7 @@ fun TimeAwayScreen(
                                 color = MaterialTheme.colorScheme.onSurface
                             )
                             Text(
-                                text = "Offline focus during waking hours (past 7 days)",
+                                text = "Total offline focus time (past 7 days)",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.secondary,
                                 fontSize = 11.sp
@@ -460,14 +465,14 @@ fun TimeAwayScreen(
                         } else {
                             history.forEach { dayData ->
                                 val screenMins = dayData.screenTimeMinutes
-                                val totalWakingMins = DigitalWellbeingService.DAILY_WAKING_MINUTES
-                                val elapsedWakingToday = DigitalWellbeingService.getElapsedWakingMinutesToday()
+                                val totalDayMins = DigitalWellbeingService.DAILY_MINUTES
+                                val elapsedMinutesToday = DigitalWellbeingService.getElapsedMinutesToday()
                                 val freeMins = if (dayData.isToday) {
-                                    (elapsedWakingToday - screenMins).coerceAtLeast(0)
+                                    (elapsedMinutesToday - screenMins).coerceAtLeast(0)
                                 } else {
-                                    (totalWakingMins - screenMins).coerceAtLeast(0)
+                                    (totalDayMins - screenMins).coerceAtLeast(0)
                                 }
-                                val maxWindowMins = if (dayData.isToday) elapsedWakingToday.coerceAtLeast(1) else totalWakingMins
+                                val maxWindowMins = if (dayData.isToday) elapsedMinutesToday.coerceAtLeast(1) else totalDayMins
                                 val freeRatio = (freeMins.toFloat() / maxWindowMins.toFloat()).coerceIn(0f, 1f)
 
                                 Row(

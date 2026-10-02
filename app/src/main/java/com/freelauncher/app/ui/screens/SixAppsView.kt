@@ -1,5 +1,6 @@
 package com.freelauncher.app.ui.screens
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.*
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -8,6 +9,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -24,6 +26,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
@@ -34,12 +37,15 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.freelauncher.app.data.models.AppItem
+import com.freelauncher.app.ui.components.MinimalistClock
+import com.freelauncher.app.ui.util.DateTimeUtils
 import com.freelauncher.app.ui.util.LauncherHaptics
 import com.freelauncher.app.ui.viewmodel.LauncherScreen
 import com.freelauncher.app.ui.viewmodel.LauncherUiState
 import kotlinx.coroutines.delay
 import java.util.Date
 import kotlin.math.abs
+import androidx.compose.ui.platform.LocalLocale
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -51,14 +57,26 @@ fun SixAppsView(
     onNavigate: (LauncherScreen) -> Unit,
     onToggleLock: () -> Unit,
     onOpenMultiPin: () -> Unit = {},
+    onOpenRearrangePinned: () -> Unit = {},
     onClearLockFeedback: () -> Unit = {},
+    onToggleUltraFocus: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
+    BackHandler {
+        onNavigate(LauncherScreen.HOME)
+    }
+
     val context = LocalContext.current
     var totalDragY by remember { mutableFloatStateOf(0f) }
     var totalDragX by remember { mutableFloatStateOf(0f) }
 
+    // Triple tap tracking
+    var bgTapCount by remember { mutableIntStateOf(0) }
+    var lastBgTapTime by remember { mutableLongStateOf(0L) }
+
     val isLocked = state.isPinnedOnlyLocked
+
+    val dateText = remember(currentTime) { DateTimeUtils.format(currentTime, DateTimeUtils.Patterns.DATE_EEEE_MMMM_D) }
 
     // Request high refresh rate for smooth transitions when this screen is active
     val currentView = LocalView.current
@@ -69,11 +87,6 @@ fun SixAppsView(
             } catch (e: Exception) { /* Fallback */ }
         }
     }
-
-    val hourFormat = remember { java.text.SimpleDateFormat("hh", java.util.Locale.getDefault()) }
-    val minFormat = remember { java.text.SimpleDateFormat("mm", java.util.Locale.getDefault()) }
-    val hourString = remember(currentTime) { hourFormat.format(currentTime) }
-    val minString = remember(currentTime) { minFormat.format(currentTime) }
 
     // Auto-clear feedback message after 2.5s
     LaunchedEffect(state.pinnedLockFeedbackMessage) {
@@ -123,6 +136,25 @@ fun SixAppsView(
                     )
                 }
             }
+            .combinedClickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = {
+                    val now = System.currentTimeMillis()
+                    if (now - lastBgTapTime < 450) {
+                        bgTapCount++
+                    } else {
+                        bgTapCount = 1
+                    }
+                    lastBgTapTime = now
+
+                    if (bgTapCount >= 3) {
+                        bgTapCount = 0
+                        LauncherHaptics.playClick(context)
+                        onToggleUltraFocus()
+                    }
+                }
+            )
             .testTag("six_apps_view_root")
     ) {
         // Top Section: Back Button (when unlocked)
@@ -149,127 +181,115 @@ fun SixAppsView(
             modifier = Modifier
                 .fillMaxWidth()
                 .align(Alignment.Center)
+                .scale(state.sixAppsScale)
                 .padding(horizontal = 36.dp),
-            horizontalAlignment = Alignment.Start,
+            horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(18.dp)
         ) {
-            // Small time icon displayed exclusively in the marked location, matching app monogram size
-            Box(
+            // Clock header fixed at 75% scale (independent of Home Screen clock scale)
+            Column(
                 modifier = Modifier
-                    .padding(start = 4.dp, bottom = 2.dp)
-                    .size(38.dp)
-                    .clip(RoundedCornerShape(6.dp))
-                    .border(
-                        1.dp,
-                        MaterialTheme.colorScheme.outline.copy(alpha = 0.4f),
-                        RoundedCornerShape(6.dp)
-                    )
-                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
-                    .testTag("pinned_small_time_icon"),
-                contentAlignment = Alignment.Center
+                    .padding(bottom = 16.dp)
+                    .wrapContentSize()
+                    .scale(0.75f)
+                    .testTag("pinned_full_clock"),
+                horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.Center
-                ) {
-                    Text(
-                        text = hourString,
-                        style = MaterialTheme.typography.labelSmall.copy(
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 11.sp,
-                            lineHeight = 12.sp,
-                            letterSpacing = 0.5.sp
-                        ),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Text(
-                        text = minString,
-                        style = MaterialTheme.typography.labelSmall.copy(
-                            fontWeight = FontWeight.Medium,
-                            fontSize = 11.sp,
-                            lineHeight = 12.sp,
-                            letterSpacing = 0.5.sp
-                        ),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
+                MinimalistClock(
+                    currentTime = currentTime,
+                    clockStyle = state.clockStyle
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = dateText,
+                    style = MaterialTheme.typography.titleMedium.copy(
+                        fontWeight = FontWeight.Normal,
+                        letterSpacing = 0.5.sp
+                    ),
+                    color = MaterialTheme.colorScheme.secondary,
+                    textAlign = TextAlign.Center
+                )
             }
 
-            if (state.pinnedApps.isEmpty()) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 32.dp),
-                    horizontalAlignment = Alignment.Start,
-                    verticalArrangement = Arrangement.spacedBy(14.dp)
-                ) {
-                    Text(
-                        text = "Your quick access slots are empty.",
-                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Medium),
-                        color = MaterialTheme.colorScheme.secondary,
-                        textAlign = TextAlign.Start
-                    )
-                    Text(
-                        text = if (isLocked) "Triple-tap to unlock and select apps." else "Add up to 6 apps for a distraction-free home.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.secondary.copy(alpha = 0.7f),
-                        textAlign = TextAlign.Start
-                    )
-                    if (!isLocked) {
-                        Surface(
-                            onClick = onOpenMultiPin,
-                            shape = RoundedCornerShape(12.dp),
-                            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(56.dp)
-                                .testTag("add_first_app_button")
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 16.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            // App list aligned to start within the centered column
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalAlignment = Alignment.Start,
+                verticalArrangement = Arrangement.spacedBy(18.dp)
+            ) {
+                if (state.pinnedApps.isEmpty()) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 32.dp),
+                        horizontalAlignment = Alignment.Start,
+                        verticalArrangement = Arrangement.spacedBy(14.dp)
+                    ) {
+                        Text(
+                            text = "Your quick access slots are empty.",
+                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Medium),
+                            color = MaterialTheme.colorScheme.secondary,
+                            textAlign = TextAlign.Start
+                        )
+                        Text(
+                            text = if (isLocked) "Triple-tap to unlock and select apps." else "Add up to 6 apps for a distraction-free home.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.secondary.copy(alpha = 0.7f),
+                            textAlign = TextAlign.Start
+                        )
+                        if (!isLocked) {
+                            Surface(
+                                onClick = onOpenMultiPin,
+                                shape = RoundedCornerShape(12.dp),
+                                color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(56.dp)
+                                    .testTag("add_first_app_button")
                             ) {
-                                Icon(
-                                    imageVector = Icons.Default.Add,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.size(20.dp)
-                                )
-                                Text(
-                                    text = "Add Apps (0/6)",
-                                    style = MaterialTheme.typography.bodyLarge.copy(
-                                        fontWeight = FontWeight.Medium,
-                                        color = MaterialTheme.colorScheme.primary
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 16.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Add,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(20.dp)
                                     )
-                                )
+                                    Text(
+                                        text = "Add Apps (0/6)",
+                                        style = MaterialTheme.typography.bodyLarge.copy(
+                                            fontWeight = FontWeight.Medium,
+                                            color = MaterialTheme.colorScheme.primary
+                                        )
+                                    )
+                                }
                             }
                         }
                     }
+                } else {
+                    val pinned = state.pinnedApps.take(6)
+                    pinned.forEachIndexed { index, app ->
+                        SixAppRowItem(
+                            app = app,
+                            showMonogram = state.showMonograms,
+                            isLocked = isLocked,
+                            onClick = { onLaunchApp(app) },
+                            onLongClick = {
+                                if (!isLocked) {
+                                    onOpenRearrangePinned()
+                                }
+                            },
+                            onTripleTap = {
+                                LauncherHaptics.playClick(context)
+                                onToggleLock()
+                            },
+                            testTag = "six_app_item_$index"
+                        )
+                    }
                 }
-            } else {
-                val pinned = state.pinnedApps.take(6)
-                pinned.forEachIndexed { index, app ->
-                    SixAppRowItem(
-                        app = app,
-                        showMonogram = state.showMonograms,
-                        isLocked = isLocked,
-                        onClick = { onLaunchApp(app) },
-                        onLongClick = {
-                            if (!isLocked) {
-                                // Changed: long press now opens the selection panel
-                                onOpenMultiPin()
-                            }
-                        },
-                        onTripleTap = {
-                            LauncherHaptics.playClick(context)
-                            onToggleLock()
-                        },
-                        testTag = "six_app_item_$index"
-                    )
-                }
-
-                // Removed the "Add App" slot here since it should only show when zero apps are added
             }
         }
 
@@ -312,7 +332,7 @@ fun SixAppsView(
                     val timerText = if (isTimerActive) {
                         val mins = state.focusTimerSecondsLeft / 60
                         val secs = state.focusTimerSecondsLeft % 60
-                        String.format(java.util.Locale.getDefault(), "%02d:%02d", mins, secs)
+                        String.format(LocalLocale.current.platformLocale, "%02d:%02d", mins, secs)
                     } else ""
 
                     Row(
@@ -327,7 +347,7 @@ fun SixAppsView(
                             tint = if (isTimerActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.secondary.copy(alpha = 0.8f)
                         )
                         Text(
-                            text = if (isTimerActive) "FOCUS $timerText • TRIPLE-TAP TO EXIT" else "LOCKED • TRIPLE-TAP TO EXIT",
+                            text = if (isTimerActive) "ULTRAFOCUS $timerText • TRIPLE-TAP TO EXIT" else "ULTRAFOCUS LOCKED • TRIPLE-TAP TO EXIT",
                             style = MaterialTheme.typography.labelSmall.copy(
                                 letterSpacing = 0.8.sp,
                                 fontSize = 10.sp,

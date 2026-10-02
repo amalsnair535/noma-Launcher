@@ -56,7 +56,6 @@ fun CategoryManagerSheet(
     onToggleCategoryVisibility: (categoryId: String) -> Unit,
     onMoveCategoryUp: (categoryId: String) -> Unit,
     onMoveCategoryDown: (categoryId: String) -> Unit,
-    onSetAppCategory: (packageName: String, categoryId: String) -> Unit,
     onResetToDefaults: () -> Unit,
     onDismiss: () -> Unit
 ) {

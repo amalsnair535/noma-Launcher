@@ -1,10 +1,12 @@
 package com.freelauncher.app.ui.screens
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
@@ -17,7 +19,6 @@ import androidx.compose.material.icons.filled.CenterFocusStrong
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.ChevronRight
-import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.OpenWith
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.outlined.Call
@@ -40,6 +41,8 @@ import androidx.compose.ui.unit.sp
 import com.freelauncher.app.ui.components.ClockStyle
 import com.freelauncher.app.ui.components.MinimalistClock
 import com.freelauncher.app.ui.components.getContextualGreeting
+import com.freelauncher.app.ui.util.DateTimeUtils
+import com.freelauncher.app.ui.util.LauncherHaptics
 import com.freelauncher.app.ui.viewmodel.LauncherScreen
 import com.freelauncher.app.ui.viewmodel.LauncherUiState
 import java.text.SimpleDateFormat
@@ -56,15 +59,27 @@ fun HomeScreen(
     onOpenSettings: () -> Unit,
     onOpenSearch: () -> Unit = {},
     onOpenDialer: () -> Unit = {},
+    onOpenClock: () -> Unit = {},
+    onOpenCalendar: () -> Unit = {},
+    onDoubleTapToSleep: () -> Unit = {},
     modifier: Modifier = Modifier,
     onClockStyleChanged: (ClockStyle) -> Unit = {},
     onTimeCardOffsetChanged: (Float, Float) -> Unit = { _, _ -> },
     onResetTimeCardOffset: () -> Unit = {},
     onTimeCardScaleChanged: (Float) -> Unit = {},
     onClockEditModeToggled: (Boolean) -> Unit = {},
+    onToggleUltraFocus: () -> Unit = {},
+    onOpenProSheet: () -> Unit = {},
 ) {
-    val dateFormat = remember { SimpleDateFormat("EEEE, MMMM d", Locale.getDefault()) }
-    val dateText = remember(currentTime) { dateFormat.format(currentTime) }
+    BackHandler(enabled = true) {
+        if (state.isClockEditMode) {
+            onClockEditModeToggled(false)
+        }
+        // Intercept back gesture / press on Home Screen: no navigation, no animation, no reload
+    }
+
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val dateText = remember(currentTime) { DateTimeUtils.format(currentTime, DateTimeUtils.Patterns.DATE_EEEE_MMMM_D) }
     val greetingText = remember(state.customGreeting, currentTime) {
         if (state.customGreeting == "auto") {
             getContextualGreeting(Calendar.getInstance().apply { time = currentTime })
@@ -107,6 +122,10 @@ fun HomeScreen(
             } catch (e: Exception) { /* Fallback */ }
         }
     }
+
+    // Triple tap tracking
+    var rootTapCount by remember { mutableIntStateOf(0) }
+    var lastRootTapTime by remember { mutableLongStateOf(0L) }
 
     Box(
         modifier = modifier
@@ -152,7 +171,26 @@ fun HomeScreen(
                     if (isEditMode) {
                         onClockEditModeToggled(false)
                     } else {
-                        onNavigate(LauncherScreen.SIX_APPS)
+                        val now = System.currentTimeMillis()
+                        if (now - lastRootTapTime < 450) {
+                            rootTapCount++
+                        } else {
+                            rootTapCount = 1
+                        }
+                        lastRootTapTime = now
+
+                        if (rootTapCount == 2) {
+                            if (state.enableDoubleTapToSleep) {
+                                LauncherHaptics.playClick(context)
+                                onDoubleTapToSleep()
+                            }
+                        } else if (rootTapCount >= 3) {
+                            rootTapCount = 0
+                            LauncherHaptics.playClick(context)
+                            onToggleUltraFocus()
+                        } else {
+                            // Single tap on Home screen background does NOT launch apps
+                        }
                     }
                 },
                 onLongClick = {
@@ -299,10 +337,24 @@ fun HomeScreen(
                                         val swipeThreshold = 50f
                                         if (clockSwipeAccumulator < -swipeThreshold) {
                                             val nextIndex = (latestStyleIndex + 1) % allClockStyles.size
-                                            onClockStyleChanged(allClockStyles[nextIndex])
+                                            val targetStyle = allClockStyles[nextIndex]
+                                            val isFreeStyle = targetStyle == ClockStyle.LARGE_DIGITAL || targetStyle == ClockStyle.THIN_DIGITAL
+                                            if (!state.isProUnlocked && !isFreeStyle) {
+                                                LauncherHaptics.playClick(context)
+                                                onOpenProSheet()
+                                            } else {
+                                                onClockStyleChanged(targetStyle)
+                                            }
                                         } else if (clockSwipeAccumulator > swipeThreshold) {
                                             val prevIndex = if ((latestStyleIndex - 1) < 0) allClockStyles.size - 1 else latestStyleIndex - 1
-                                            onClockStyleChanged(allClockStyles[prevIndex])
+                                            val targetStyle = allClockStyles[prevIndex]
+                                            val isFreeStyle = targetStyle == ClockStyle.LARGE_DIGITAL || targetStyle == ClockStyle.THIN_DIGITAL
+                                            if (!state.isProUnlocked && !isFreeStyle) {
+                                                LauncherHaptics.playClick(context)
+                                                onOpenProSheet()
+                                            } else {
+                                                onClockStyleChanged(targetStyle)
+                                            }
                                         }
                                         clockSwipeAccumulator = 0f
                                     }
@@ -317,7 +369,7 @@ fun HomeScreen(
                             indication = null,
                             onClick = {
                                 if (!isEditMode) {
-                                    onNavigate(LauncherScreen.SIX_APPS)
+                                    onOpenClock()
                                 }
                             },
                             onLongClick = {
@@ -353,8 +405,37 @@ fun HomeScreen(
                     textAlign = TextAlign.Center,
                     modifier = Modifier
                         .scale(clockAnimScale.coerceAtMost(1.2f))
+                        .clip(RoundedCornerShape(12.dp))
+                        .clickable {
+                            if (!isEditMode) {
+                                onOpenCalendar()
+                            }
+                        }
+                        .padding(horizontal = 8.dp, vertical = 4.dp)
                         .testTag("home_date_text")
                 )
+
+                // Text-Only Weather & Battery Glance
+                if (state.showWeatherBatteryGlance) {
+                    val batteryStr = if (state.isBatteryCharging) "⚡ ${state.batteryLevel}%" else "${state.batteryLevel}%"
+                    val weatherPart = state.weatherText ?: if (state.temperatureUnit == "C") "22°C Clear" else "72°F Clear"
+                    val glanceText = "$weatherPart • $batteryStr"
+
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = glanceText,
+                        style = MaterialTheme.typography.bodyMedium.copy(
+                            fontWeight = FontWeight.Medium,
+                            letterSpacing = 0.5.sp,
+                            fontSize = 13.sp
+                        ),
+                        color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.85f),
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier
+                            .scale(clockAnimScale.coerceAtMost(1.15f))
+                            .testTag("home_weather_battery_glance")
+                    )
+                }
 
                 Spacer(modifier = Modifier.height(10.dp))
 
@@ -475,7 +556,7 @@ fun HomeScreen(
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     // Category Tab Row: Style & Resize only (Position is replaced by free drag & placement)
-                    TabRow(
+                    PrimaryTabRow(
                         selectedTabIndex = editTab,
                         containerColor = Color.Transparent,
                         contentColor = MaterialTheme.colorScheme.primary,

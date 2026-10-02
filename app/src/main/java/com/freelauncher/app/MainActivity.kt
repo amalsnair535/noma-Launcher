@@ -1,7 +1,6 @@
 package com.freelauncher.app
 
 import android.os.Bundle
-import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
@@ -22,6 +21,7 @@ import androidx.core.view.WindowInsetsControllerCompat
 import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
+import coil.request.ImageRequest
 import com.freelauncher.app.ui.components.*
 import com.freelauncher.app.ui.screens.*
 import com.freelauncher.app.ui.theme.FreeLauncherTheme
@@ -93,11 +93,15 @@ class MainActivity : FragmentActivity() {
             val onOpenCreator = remember { { viewModel.setAtmosphericCreatorVisible(true) } }
             val onDeleteTheme = remember { { id: String -> viewModel.deleteAtmosphericTheme(id) } }
 
-            val currentWallpaper = remember(state.wallpaperId, state.customWallpapers) {
-                state.customWallpapers.find { it.id == state.wallpaperId }
-                    ?: LauncherWallpaper.getById(state.wallpaperId)
+            val isCustomActive = (state.wallpaperId == "custom_gallery") && !state.customWallpaperUri.isNullOrBlank() && state.isProUnlocked
+            val currentWallpaper = remember(state.wallpaperId, state.customWallpapers, state.isProUnlocked) {
+                if (state.wallpaperId.startsWith("custom_theme_") && !state.isProUnlocked) {
+                    LauncherWallpaper.getById("cyber_noir")
+                } else {
+                    state.customWallpapers.find { it.id == state.wallpaperId }
+                        ?: LauncherWallpaper.getById(state.wallpaperId)
+                }
             }
-            val isCustomActive = (state.wallpaperId == "custom_gallery") && !state.customWallpaperUri.isNullOrBlank()
 
             FreeLauncherTheme(
                 themeMode = state.themeMode,
@@ -109,10 +113,34 @@ class MainActivity : FragmentActivity() {
                         .fillMaxSize()
                         .background(MaterialTheme.colorScheme.background),
                 ) {
+                    // Biometric Authentication Handler (Direct System Prompt)
+                    LaunchedEffect(state.pendingBiometricUnlock, state.biometricAuthTrigger) {
+                        if (state.pendingBiometricUnlock) {
+                            if (BiometricHelper.isBiometricAvailable(this@MainActivity)) {
+                                BiometricHelper.authenticate(
+                                    activity = this@MainActivity,
+                                    title = "Authentication Required",
+                                    subtitle = "Use fingerprint or screen lock to verify identity",
+                                    onSuccess = {
+                                        viewModel.unlockAllApps()
+                                    },
+                                    onError = {
+                                        viewModel.onBiometricPromptHandled()
+                                    }
+                                )
+                            } else {
+                                viewModel.unlockAllApps() // Fallback if suddenly unavailable
+                            }
+                        }
+                    }
                     // Wallpaper Layer
                     if (isCustomActive) {
                         AsyncImage(
-                            model = File(state.customWallpaperUri!!),
+                            model = ImageRequest.Builder(LocalContext.current)
+                                .data(File(state.customWallpaperUri!!))
+                                .memoryCacheKey(state.customWallpaperUri!!)
+                                .diskCacheKey(state.customWallpaperUri!!)
+                                .build(),
                             contentDescription = "Device Wallpaper",
                             contentScale = ContentScale.Crop,
                             modifier = Modifier.fillMaxSize(),
@@ -132,41 +160,32 @@ class MainActivity : FragmentActivity() {
                             .background(Color.Black.copy(alpha = state.wallpaperDim)),
                     )
 
-                    // Back Press Navigation Handler
-                    BackHandler(enabled = (state.currentScreen != LauncherScreen.HOME) || state.isPinnedOnlyLocked) {
-                        if (state.isPinnedOnlyLocked) {
-                            // Locked in focus mode: cannot exit until triple tapped
-                        } else if (state.currentScreen != LauncherScreen.HOME) {
-                            viewModel.navigateTo(LauncherScreen.HOME)
-                        }
-                    }
-
                     // Navigation and Screen switcher
                     AnimatedContent(
                         targetState = state.currentScreen,
                         transitionSpec = {
-                            val animSpec = tween<androidx.compose.ui.unit.IntOffset>(durationMillis = 300, easing = FastOutSlowInEasing)
-                            val fadeSpec = tween<Float>(durationMillis = 300, easing = FastOutSlowInEasing)
+                            val animSpec = tween<androidx.compose.ui.unit.IntOffset>(durationMillis = 180, easing = FastOutSlowInEasing)
+                            val fadeSpec = tween<Float>(durationMillis = 180, easing = FastOutSlowInEasing)
 
                             when {
                                 // Horizontal: Navigating to TIME_AWAY (Left screen)
                                 targetState == LauncherScreen.TIME_AWAY ->
                                     (slideInHorizontally(animSpec) { -it } + fadeIn(fadeSpec))
-                                        .togetherWith(slideOutHorizontally(animSpec) { it / 3 } + fadeOut(fadeSpec))
-
-                                // Horizontal: Returning from TIME_AWAY
-                                initialState == LauncherScreen.TIME_AWAY ->
-                                    (slideInHorizontally(animSpec) { -it / 3 } + fadeIn(fadeSpec))
                                         .togetherWith(slideOutHorizontally(animSpec) { it } + fadeOut(fadeSpec))
+
+                                // Horizontal: Returning from TIME_AWAY to Home (moving right)
+                                initialState == LauncherScreen.TIME_AWAY ->
+                                    (slideInHorizontally(animSpec) { it } + fadeIn(fadeSpec))
+                                        .togetherWith(slideOutHorizontally(animSpec) { -it } + fadeOut(fadeSpec))
 
                                 // Horizontal: Navigating to RSS_FEED (Right screen)
                                 targetState == LauncherScreen.RSS_FEED ->
                                     (slideInHorizontally(animSpec) { it } + fadeIn(fadeSpec))
-                                        .togetherWith(slideOutHorizontally(animSpec) { -it / 3 } + fadeOut(fadeSpec))
+                                        .togetherWith(slideOutHorizontally(animSpec) { -it } + fadeOut(fadeSpec))
 
-                                // Horizontal: Returning from RSS_FEED
+                                // Horizontal: Returning from RSS_FEED to Home (moving left)
                                 initialState == LauncherScreen.RSS_FEED ->
-                                    (slideInHorizontally(animSpec) { -it / 3 } + fadeIn(fadeSpec))
+                                    (slideInHorizontally(animSpec) { -it } + fadeIn(fadeSpec))
                                         .togetherWith(slideOutHorizontally(animSpec) { it } + fadeOut(fadeSpec))
 
                                 // Vertical: Navigating to ALL_APPS
@@ -205,11 +224,17 @@ class MainActivity : FragmentActivity() {
                                     onOpenSettings = onOpenSettings,
                                     onOpenSearch = { viewModel.openSearchFromHome() },
                                     onOpenDialer = { viewModel.openDialerApp(context) },
+                                    onOpenClock = { viewModel.openClockApp(context) },
+                                    onOpenCalendar = { viewModel.openCalendarApp(context) },
+                                    onDoubleTapToSleep = { viewModel.performDoubleTapToSleep(context) },
                                     onClockStyleChanged = onClockStyleChanged,
                                     onTimeCardOffsetChanged = onTimeCardOffsetChanged,
                                     onResetTimeCardOffset = onResetTimeCardOffset,
                                     onTimeCardScaleChanged = onTimeCardScaleChanged,
-                                ) { onClockEditModeToggled(it) }
+                                    onClockEditModeToggled = { onClockEditModeToggled(it) },
+                                    onToggleUltraFocus = { onToggleLock() },
+                                    onOpenProSheet = { viewModel.setProSheetVisible(true) }
+                                )
                             }
                             LauncherScreen.SIX_APPS -> {
                                 SixAppsView(
@@ -220,7 +245,9 @@ class MainActivity : FragmentActivity() {
                                     onNavigate = onNavigate,
                                     onToggleLock = onToggleLock,
                                     onOpenMultiPin = onOpenMultiPin,
+                                    onOpenRearrangePinned = { viewModel.setRearrangePinnedDialogVisible(true) },
                                     onClearLockFeedback = onClearLockFeedback,
+                                    onToggleUltraFocus = { onToggleLock() }
                                 )
                             }
                             LauncherScreen.ALL_APPS -> {
@@ -254,33 +281,6 @@ class MainActivity : FragmentActivity() {
                         }
                     }
 
-                    // Biometric Authentication Dialog
-                    if (state.showBiometricAuthDialog) {
-                        BiometricAuthDialog(
-                            errorMessage = state.biometricAuthError,
-                            onTriggerBiometric = {
-                                if (BiometricHelper.isBiometricAvailable(this@MainActivity)) {
-                                    BiometricHelper.authenticate(
-                                        activity = this@MainActivity,
-                                        title = "Unlock All Apps",
-                                        subtitle = "Use fingerprint or screen lock to open app drawer",
-                                        onSuccess = {
-                                            viewModel.unlockAllApps()
-                                        },
-                                    ) { error ->
-                                        viewModel.setBiometricAuthDialogVisible(visible = true, error = error)
-                                    }
-                                }
-                            },
-                            onUnlockSuccess = {
-                                viewModel.unlockAllApps()
-                            },
-                            onDismiss = {
-                                viewModel.setBiometricAuthDialogVisible(visible = false)
-                            },
-                        )
-                    }
-
                     // Dialog 1.5: Multi-App Selection Dialog
                     if (state.showMultiPinDialog) {
                         MultiAppPinDialog(
@@ -291,6 +291,17 @@ class MainActivity : FragmentActivity() {
                                 viewModel.updatePinnedApps(ids)
                                 viewModel.setMultiPinDialogVisible(false)
                             }
+                        )
+                    }
+
+                    // Dialog 1.7: Rearrange Pinned Apps Dialog
+                    if (state.showRearrangePinnedDialog) {
+                        RearrangePinnedDialog(
+                            pinnedApps = state.pinnedApps,
+                            onMoveUp = { viewModel.movePinnedAppUp(it) },
+                            onMoveDown = { viewModel.movePinnedAppDown(it) },
+                            onUnpin = { viewModel.unpinApp(it) },
+                            onDismiss = { viewModel.setRearrangePinnedDialogVisible(false) }
                         )
                     }
 
@@ -343,22 +354,85 @@ class MainActivity : FragmentActivity() {
                             showGestureHints = state.showGestureHints,
                             showNewsFeed = state.showNewsFeed,
                             showTimeAway = state.showTimeAway,
+                            showWeatherBatteryGlance = state.showWeatherBatteryGlance,
+                            enableDoubleTapToSleep = state.enableDoubleTapToSleep,
+                            sixAppsScale = state.sixAppsScale,
+                            temperatureUnit = state.temperatureUnit,
                             currentGreeting = state.customGreeting,
                             isBiometricLockEnabled = state.isBiometricLockEnabled,
+                            isProUnlocked = state.isProUnlocked,
+                            lockMethod = state.lockMethod,
+                            customPin = state.customPin,
                             onClockStyleChanged = onClockStyleChanged,
                             onFontChanged = { viewModel.setFontFamily(it) },
                             onThemeChanged = { viewModel.setThemeMode(it) },
                             onOpenWallpaperPicker = onOpenWallpaperPicker,
                             onMonogramsToggled = { viewModel.setShowMonograms(it) },
                             onGestureHintsToggled = { viewModel.setShowGestureHints(it) },
+                            onDoubleTapToSleepToggled = { viewModel.setDoubleTapToSleepEnabled(it) },
+                            onSixAppsScaleChanged = { viewModel.setSixAppsScale(it) },
                             onNewsFeedToggled = { viewModel.setShowNewsFeed(it) },
                             onTimeAwayToggled = { viewModel.setShowTimeAway(it) },
+                            onWeatherBatteryGlanceToggled = { viewModel.toggleWeatherBatteryGlance(it) },
+                            onTemperatureUnitChanged = { viewModel.setTemperatureUnit(it) },
                             onGreetingChanged = { viewModel.setCustomGreeting(it) },
                             onBiometricLockToggled = { viewModel.setBiometricLockEnabled(it) },
+                            onLockMethodChanged = { viewModel.setLockMethod(it) },
+                            onOpenSetPinDialog = { viewModel.setSetPinDialogVisible(true) },
                             onOpenCategoryManager = onOpenCategoryManager,
                             onOpenRssManager = onOpenRssManager,
                             onOpenOnboardingGuide = { viewModel.setOnboardingGuideVisible(true) },
+                            onOpenAboutSheet = { viewModel.setAboutSheetVisible(true) },
+                            onOpenBackupSheet = { viewModel.setBackupSheetVisible(true) },
+                            onOpenProSheet = { viewModel.setProSheetVisible(true) },
                         ) { viewModel.setSettingsSheetVisible(visible = false) }
+                    }
+
+                    // About noma & Support Sheet
+                    if (state.showAboutSheet) {
+                        AboutSheet(
+                            onOpenUrl = { url -> viewModel.openWebUrl(this@MainActivity, url) },
+                            onDismiss = { viewModel.setAboutSheetVisible(false) }
+                        )
+                    }
+
+                    // Set/Change 4-Digit PIN Dialog
+                    if (state.showSetPinDialog) {
+                        SetPinDialog(
+                            existingPin = state.customPin,
+                            onDismiss = { viewModel.setSetPinDialogVisible(false) },
+                            onConfirmPin = { pin ->
+                                viewModel.setCustomPin(pin)
+                            }
+                        )
+                    }
+
+                    // Backup & Restore Sheet
+                    if (state.showBackupSheet) {
+                        BackupRestoreSheet(
+                            onExportBackupJson = { viewModel.exportBackupJson() },
+                            onImportBackupJson = { json -> viewModel.importBackupJson(json) },
+                            onDismiss = { viewModel.setBackupSheetVisible(false) }
+                        )
+                    }
+
+                    // 4-Digit PIN Unlock Numpad Sheet
+                    if (state.showPinUnlockSheet) {
+                        PinUnlockSheet(
+                            targetPin = state.customPin,
+                            onPinCorrect = {
+                                viewModel.unlockAllApps()
+                            },
+                            onSwitchToBiometric = {
+                                viewModel.setPinUnlockSheetVisible(false)
+                                viewModel.setLockMethod("biometric")
+                                viewModel.requestAccessToAllApps()
+                            },
+                            onDismiss = {
+                                viewModel.setPinUnlockSheetVisible(false)
+                                viewModel.onBiometricPromptHandled()
+                            }
+                        )
                     }
 
                     // Onboarding & Gesture Guide Sheet
@@ -389,7 +463,17 @@ class MainActivity : FragmentActivity() {
                             onWallpaperDimChange = setWallpaperDim,
                             onOpenCreator = onOpenCreator,
                             onDeleteTheme = onDeleteTheme,
+                            isProUnlocked = state.isProUnlocked,
+                            onOpenProSheet = { viewModel.setProSheetVisible(true) },
                         ) { viewModel.setWallpaperPickerVisible(visible = false) }
+                    }
+
+                    // noma Pro Paywall Sheet
+                    if (state.showProSheet) {
+                        NomaProSheet(
+                            onUnlockPro = { viewModel.unlockProFeatures() },
+                            onDismiss = { viewModel.setProSheetVisible(false) }
+                        )
                     }
 
                     // Atmospheric Theme Creator Dialog
@@ -424,9 +508,6 @@ class MainActivity : FragmentActivity() {
                             },
                             onMoveCategoryDown = { id ->
                                 viewModel.moveCategoryDown(id)
-                            },
-                            onSetAppCategory = { pkg, catId ->
-                                viewModel.setAppCategory(pkg, catId)
                             },
                             onResetToDefaults = {
                                 viewModel.resetCategoriesToDefault()

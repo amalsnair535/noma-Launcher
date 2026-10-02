@@ -55,7 +55,7 @@ fun OnboardingSheet(
                 ) {
                     Column {
                         Text(
-                            text = "Welcome to FREE Launcher",
+                            text = "Welcome to noma",
                             style = MaterialTheme.typography.titleLarge.copy(
                                 fontWeight = FontWeight.Bold,
                                 letterSpacing = 0.5.sp
@@ -115,7 +115,7 @@ fun OnboardingSheet(
                         }
 
                         Text(
-                            text = "To replace your stock launcher and use FREE Launcher as your home screen, set it as default in Android settings.",
+                            text = "To replace your stock launcher and use noma as your home screen, set it as default in Android settings.",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -139,7 +139,7 @@ fun OnboardingSheet(
                             )
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
-                                text = "Set FREE Launcher as Default",
+                                text = "Set noma as Default",
                                 style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold)
                             )
                         }
@@ -172,7 +172,7 @@ fun OnboardingSheet(
                         GestureCard(
                             direction = "↑ Swipe Up",
                             title = "Six Apps",
-                            description = "Quick slots & Focus Mode (triple-tap lock)",
+                            description = "Quick slots & UltraFocus Mode (triple-tap lock)",
                             icon = Icons.Outlined.Apps,
                             modifier = Modifier.weight(1f)
                         )

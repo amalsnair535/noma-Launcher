@@ -1,5 +1,6 @@
 package com.freelauncher.app.ui.screens
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
@@ -42,6 +43,10 @@ fun RssFeedScreen(
     onOpenSettings: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
+    BackHandler {
+        onNavigate(LauncherScreen.HOME)
+    }
+
     val context = LocalContext.current
     var totalDragX by remember { mutableFloatStateOf(0f) }
     val lazyListState = rememberLazyListState()

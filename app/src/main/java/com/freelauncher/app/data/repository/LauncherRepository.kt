@@ -11,14 +11,12 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
-import java.text.SimpleDateFormat
-import java.util.Date
 import java.util.Locale
 import java.util.UUID
 
 class LauncherRepository(
     private val context: Context,
-    private val database: LauncherDatabase = LauncherDatabase.getDatabase(context),
+    database: LauncherDatabase = LauncherDatabase.getDatabase(context),
     private val appManager: AppManager = AppManager(context),
     private val rssParser: RssParser = RssParser()
 ) {
@@ -93,7 +91,7 @@ class LauncherRepository(
                 }
                 
                 if (list.isEmpty()) getDefaultCategories() else list.sortedBy { it.order }
-            } catch (e: Exception) {
+            } catch (_: Exception) {
                 getDefaultCategories()
             }
         }
@@ -197,7 +195,7 @@ class LauncherRepository(
                 map[key] = obj.getString(key)
             }
             map
-        } catch (e: Exception) {
+        } catch (_: Exception) {
             emptyMap()
         }
     }
@@ -298,32 +296,6 @@ class LauncherRepository(
         settingDao.setSetting(LauncherSettingEntity("pinned_apps", limited.joinToString(",")))
     }
 
-    // Notes
-    suspend fun addNote(content: String) = withContext(Dispatchers.IO) {
-        if (content.isNotBlank()) {
-            noteDao.insertNote(NoteEntity(content = content.trim()))
-        }
-    }
-
-    suspend fun deleteNote(id: Long) = withContext(Dispatchers.IO) {
-        noteDao.deleteNoteById(id)
-    }
-
-    // Calendar
-    suspend fun addCalendarEvent(title: String, eventDate: Long, priority: String = "Normal") = withContext(Dispatchers.IO) {
-        if (title.isNotBlank()) {
-            calendarDao.insertEvent(CalendarEventEntity(title = title.trim(), eventDate = eventDate, priority = priority))
-        }
-    }
-
-    suspend fun toggleEventCompletion(event: CalendarEventEntity) = withContext(Dispatchers.IO) {
-        calendarDao.updateEvent(event.copy(isCompleted = !event.isCompleted))
-    }
-
-    suspend fun deleteCalendarEvent(id: Long) = withContext(Dispatchers.IO) {
-        calendarDao.deleteEventById(id)
-    }
-
     // RSS / News
     suspend fun syncRssFeeds(): Int = withContext(Dispatchers.IO) {
         val feeds = rssDao.getEnabledFeedsList()
@@ -387,17 +359,6 @@ class LauncherRepository(
     suspend fun deleteFeed(feedId: Long) = withContext(Dispatchers.IO) {
         rssDao.deleteArticlesForFeed(feedId)
         rssDao.deleteFeed(feedId)
-    }
-
-    // Focus
-    suspend fun recordFocusSession(minutes: Int) = withContext(Dispatchers.IO) {
-        val today = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
-        focusDao.insertSession(
-            FocusSessionEntity(
-                dateString = today,
-                sessionMinutes = minutes
-            )
-        )
     }
 
     // Settings

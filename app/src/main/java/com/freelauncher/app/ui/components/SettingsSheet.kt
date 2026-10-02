@@ -4,6 +4,7 @@ import android.content.Intent
 import android.provider.Settings
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -39,9 +40,10 @@ import com.freelauncher.app.ui.theme.LauncherFont
 import com.freelauncher.app.ui.theme.LauncherThemeMode
 import com.freelauncher.app.ui.util.LauncherHaptics
 import com.freelauncher.app.ui.util.TrackScrollHaptics
-import java.text.SimpleDateFormat
+import com.freelauncher.app.ui.util.DateTimeUtils
 import java.util.Date
 import java.util.Locale
+import kotlin.math.roundToInt
 import java.io.File
 import coil.compose.AsyncImage
 import androidx.compose.ui.layout.ContentScale
@@ -58,21 +60,37 @@ fun SettingsSheet(
     showGestureHints: Boolean = false,
     showNewsFeed: Boolean = true,
     showTimeAway: Boolean = true,
+    showWeatherBatteryGlance: Boolean = false,
+    enableDoubleTapToSleep: Boolean = false,
+    sixAppsScale: Float = 0.9f,
+    temperatureUnit: String = "F",
     currentGreeting: String,
     isBiometricLockEnabled: Boolean = false,
+    isProUnlocked: Boolean = false,
+    lockMethod: String = "pin",
+    customPin: String = "",
     onClockStyleChanged: (ClockStyle) -> Unit,
     onFontChanged: (LauncherFont) -> Unit,
     onThemeChanged: (LauncherThemeMode) -> Unit,
     onOpenWallpaperPicker: () -> Unit = {},
     onMonogramsToggled: (Boolean) -> Unit,
     onGestureHintsToggled: (Boolean) -> Unit = {},
+    onDoubleTapToSleepToggled: (Boolean) -> Unit = {},
+    onSixAppsScaleChanged: (Float) -> Unit = {},
     onNewsFeedToggled: (Boolean) -> Unit = {},
     onTimeAwayToggled: (Boolean) -> Unit = {},
+    onWeatherBatteryGlanceToggled: (Boolean) -> Unit = {},
+    onTemperatureUnitChanged: (String) -> Unit = {},
     onGreetingChanged: (String) -> Unit,
     onBiometricLockToggled: (Boolean) -> Unit = {},
+    onLockMethodChanged: (String) -> Unit = {},
+    onOpenSetPinDialog: () -> Unit = {},
     onOpenCategoryManager: () -> Unit = {},
     onOpenRssManager: () -> Unit,
     onOpenOnboardingGuide: () -> Unit = {},
+    onOpenAboutSheet: () -> Unit = {},
+    onOpenBackupSheet: () -> Unit = {},
+    onOpenProSheet: () -> Unit = {},
     onDismiss: () -> Unit
 ) {
     val context = LocalContext.current
@@ -181,11 +199,21 @@ fun SettingsSheet(
                     ) {
                         items(ClockStyle.entries, key = { it.id }) { style ->
                             val isSelected = style == currentClockStyle
+                            val isFreeStyle = style == ClockStyle.LARGE_DIGITAL || style == ClockStyle.THIN_DIGITAL
+                            val isProLocked = !isProUnlocked && !isFreeStyle
                             ClockStyleCard(
                                 style = style,
                                 isSelected = isSelected,
+                                isProLocked = isProLocked,
                                 previewTime = previewTime,
-                                onClick = { onClockStyleChanged(style) }
+                                onClick = {
+                                    if (isProLocked) {
+                                        LauncherHaptics.playClick(context)
+                                        onOpenProSheet()
+                                    } else {
+                                        onClockStyleChanged(style)
+                                    }
+                                }
                             )
                         }
                     }
@@ -399,16 +427,43 @@ fun SettingsSheet(
                     ) {
                         LauncherFont.entries.forEach { font ->
                             val isSelected = font == currentFont
+                            val isProFont = font != LauncherFont.MINIMAL_SANS
+                            val isLockedFont = !isProUnlocked && isProFont
                             FilterChip(
                                 selected = isSelected,
-                                onClick = { onFontChanged(font) },
+                                onClick = {
+                                    if (isLockedFont) {
+                                        LauncherHaptics.playClick(context)
+                                        onOpenProSheet()
+                                    } else {
+                                        onFontChanged(font)
+                                    }
+                                },
                                 label = {
-                                    Text(
-                                        text = font.displayName,
-                                        style = MaterialTheme.typography.bodyMedium.copy(
-                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
+                                        Text(
+                                            text = font.displayName,
+                                            style = MaterialTheme.typography.bodyMedium.copy(
+                                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                                            )
                                         )
-                                    )
+                                        if (isLockedFont) {
+                                            Surface(
+                                                shape = RoundedCornerShape(4.dp),
+                                                color = MaterialTheme.colorScheme.primaryContainer
+                                            ) {
+                                                Text(
+                                                    text = "PRO",
+                                                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.ExtraBold, fontSize = 8.sp),
+                                                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                                    modifier = Modifier.padding(horizontal = 3.dp, vertical = 1.dp)
+                                                )
+                                            }
+                                        }
+                                    }
                                 },
                                 leadingIcon = if (isSelected) {
                                     {
@@ -467,6 +522,112 @@ fun SettingsSheet(
                                     labelColor = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             )
+                        }
+                    }
+                }
+            }
+
+            // Weather & Battery Glance Section
+            item(key = "glance_status_section") {
+                MaterialYouSection(
+                    title = "Weather & Battery Glance",
+                    icon = Icons.Outlined.WbSunny,
+                    subtitle = "Text-only status badge on Home Screen"
+                ) {
+                    MaterialYouCard {
+                        Column {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        LauncherHaptics.playClick(context)
+                                        onWeatherBatteryGlanceToggled(!showWeatherBatteryGlance)
+                                    }
+                                    .padding(16.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(14.dp),
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(38.dp)
+                                            .clip(RoundedCornerShape(10.dp))
+                                            .background(MaterialTheme.colorScheme.surfaceVariant),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Outlined.BatteryChargingFull,
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                    }
+                                    Column {
+                                        Text(
+                                            text = "Show Glance Status",
+                                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Medium),
+                                            color = MaterialTheme.colorScheme.onSurface
+                                        )
+                                        Text(
+                                            text = "Display weather & battery under home clock",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.secondary
+                                        )
+                                    }
+                                }
+                                Switch(
+                                    checked = showWeatherBatteryGlance,
+                                    onCheckedChange = {
+                                        LauncherHaptics.playClick(context)
+                                        onWeatherBatteryGlanceToggled(it)
+                                    },
+                                    colors = SwitchDefaults.colors(
+                                        checkedThumbColor = MaterialTheme.colorScheme.onPrimary,
+                                        checkedTrackColor = MaterialTheme.colorScheme.primary,
+                                        uncheckedThumbColor = MaterialTheme.colorScheme.outline,
+                                        uncheckedTrackColor = MaterialTheme.colorScheme.surfaceVariant
+                                    )
+                                )
+                            }
+
+                            if (showWeatherBatteryGlance) {
+                                HorizontalDivider(
+                                    color = MaterialTheme.colorScheme.outline.copy(alpha = 0.15f),
+                                    modifier = Modifier.padding(horizontal = 16.dp)
+                                )
+
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(16.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = "Temperature Unit",
+                                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Medium),
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                        FilterChip(
+                                            selected = temperatureUnit == "F",
+                                            onClick = { onTemperatureUnitChanged("F") },
+                                            label = { Text("°F") },
+                                            shape = RoundedCornerShape(10.dp)
+                                        )
+                                        FilterChip(
+                                            selected = temperatureUnit == "C",
+                                            onClick = { onTemperatureUnitChanged("C") },
+                                            label = { Text("°C") },
+                                            shape = RoundedCornerShape(10.dp)
+                                        )
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -545,6 +706,79 @@ fun SettingsSheet(
                                 modifier = Modifier.padding(horizontal = 16.dp)
                             )
 
+                            // Quick Access (6 Apps View) Size Slider & Preset Chips
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(16.dp),
+                                verticalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(14.dp)
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(38.dp)
+                                            .clip(RoundedCornerShape(10.dp))
+                                            .background(MaterialTheme.colorScheme.surfaceVariant),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Outlined.FormatSize,
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                    }
+                                    Column {
+                                        Text(
+                                            text = "Quick Access (6 Apps View) Size",
+                                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Medium),
+                                            color = MaterialTheme.colorScheme.onSurface
+                                        )
+                                        Text(
+                                            text = "${(sixAppsScale * 100).roundToInt()}% • Scale quick slots and typography",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.secondary
+                                        )
+                                    }
+                                }
+
+                                Slider(
+                                    value = sixAppsScale,
+                                    onValueChange = {
+                                        LauncherHaptics.playClick(context)
+                                        onSixAppsScaleChanged(it)
+                                    },
+                                    valueRange = 0.6f..1.6f,
+                                    modifier = Modifier.fillMaxWidth().testTag("six_apps_scale_slider")
+                                )
+
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    listOf(0.8f to "80%", 0.9f to "90%", 1.0f to "100%", 1.2f to "120%", 1.4f to "140%").forEach { (preset, label) ->
+                                        val isSelected = kotlin.math.abs(sixAppsScale - preset) < 0.04f
+                                        FilterChip(
+                                            selected = isSelected,
+                                            onClick = {
+                                                LauncherHaptics.playClick(context)
+                                                onSixAppsScaleChanged(preset)
+                                            },
+                                            label = { Text(label, style = MaterialTheme.typography.labelSmall) },
+                                            modifier = Modifier.weight(1f)
+                                        )
+                                    }
+                                }
+                            }
+
+                            HorizontalDivider(
+                                color = MaterialTheme.colorScheme.outline.copy(alpha = 0.15f),
+                                modifier = Modifier.padding(horizontal = 16.dp)
+                            )
+
                             // Gesture hints & markings switch
                             Row(
                                 modifier = Modifier
@@ -614,12 +848,106 @@ fun SettingsSheet(
                                 modifier = Modifier.padding(horizontal = 16.dp)
                             )
 
+                            // Double-Tap to Sleep Toggle
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        LauncherHaptics.playClick(context)
+                                        if (!isProUnlocked) {
+                                            onOpenProSheet()
+                                        } else {
+                                            onDoubleTapToSleepToggled(!enableDoubleTapToSleep)
+                                        }
+                                    }
+                                    .padding(16.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(14.dp),
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(38.dp)
+                                            .clip(RoundedCornerShape(10.dp))
+                                            .background(
+                                                if (enableDoubleTapToSleep) MaterialTheme.colorScheme.primaryContainer
+                                                else MaterialTheme.colorScheme.surfaceVariant
+                                            ),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Outlined.PowerSettingsNew,
+                                            contentDescription = null,
+                                            tint = if (enableDoubleTapToSleep) MaterialTheme.colorScheme.onPrimaryContainer
+                                            else MaterialTheme.colorScheme.onSurfaceVariant,
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                    }
+                                    Column {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                        ) {
+                                            Text(
+                                                text = "Double-Tap to Sleep",
+                                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Medium),
+                                                color = MaterialTheme.colorScheme.onSurface
+                                            )
+                                            if (!isProUnlocked) {
+                                                Surface(
+                                                    shape = RoundedCornerShape(4.dp),
+                                                    color = MaterialTheme.colorScheme.primaryContainer
+                                                ) {
+                                                    Text(
+                                                        text = "PRO",
+                                                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.ExtraBold, fontSize = 8.sp),
+                                                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                                                    )
+                                                }
+                                            }
+                                        }
+                                        Text(
+                                            text = "Double-tap empty space on home screen to turn off / lock display",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.secondary
+                                        )
+                                    }
+                                }
+                                Switch(
+                                    checked = enableDoubleTapToSleep,
+                                    onCheckedChange = {
+                                        LauncherHaptics.playClick(context)
+                                        if (!isProUnlocked) {
+                                            onOpenProSheet()
+                                        } else {
+                                            onDoubleTapToSleepToggled(it)
+                                        }
+                                    },
+                                    modifier = Modifier.testTag("double_tap_to_sleep_toggle"),
+                                    colors = SwitchDefaults.colors(
+                                        checkedThumbColor = MaterialTheme.colorScheme.onPrimary,
+                                        checkedTrackColor = MaterialTheme.colorScheme.primary,
+                                        uncheckedThumbColor = MaterialTheme.colorScheme.outline,
+                                        uncheckedTrackColor = MaterialTheme.colorScheme.surfaceVariant
+                                    )
+                                )
+                            }
+
+                            HorizontalDivider(
+                                color = MaterialTheme.colorScheme.outline.copy(alpha = 0.15f),
+                                modifier = Modifier.padding(horizontal = 16.dp)
+                            )
+
                             // Manage Categories Row
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .clickable {
-                                        onDismiss()
                                         onOpenCategoryManager()
                                     }
                                     .padding(16.dp),
@@ -681,7 +1009,14 @@ fun SettingsSheet(
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clickable { onBiometricLockToggled(!isBiometricLockEnabled) }
+                                .clickable {
+                                    if (!isProUnlocked) {
+                                        LauncherHaptics.playClick(context)
+                                        onOpenProSheet()
+                                    } else {
+                                        onBiometricLockToggled(!isBiometricLockEnabled)
+                                    }
+                                }
                                 .padding(16.dp),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
@@ -709,14 +1044,37 @@ fun SettingsSheet(
                                         modifier = Modifier.size(20.dp)
                                     )
                                 }
-                                Column {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Text(
+                                            text = "Child & Fingerprint Lock",
+                                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Medium),
+                                            color = MaterialTheme.colorScheme.onSurface,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                            modifier = Modifier.weight(1f, fill = false)
+                                        )
+                                        if (!isProUnlocked) {
+                                            Surface(
+                                                shape = RoundedCornerShape(6.dp),
+                                                color = MaterialTheme.colorScheme.primaryContainer
+                                            ) {
+                                                Text(
+                                                    text = "PRO",
+                                                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.ExtraBold, fontSize = 9.sp),
+                                                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                                )
+                                            }
+                                        }
+                                    }
+                                    Spacer(modifier = Modifier.height(2.dp))
                                     Text(
-                                        text = "Fingerprint App Lock",
-                                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Medium),
-                                        color = MaterialTheme.colorScheme.onSurface
-                                    )
-                                    Text(
-                                        text = "Require fingerprint authentication to access All Apps",
+                                        text = "Require fingerprint or passcode for All Apps, Search, and Settings (restricts child usage to fixed 6 apps)",
                                         style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.secondary
                                     )
@@ -724,7 +1082,14 @@ fun SettingsSheet(
                             }
                             Switch(
                                 checked = isBiometricLockEnabled,
-                                onCheckedChange = onBiometricLockToggled,
+                                onCheckedChange = {
+                                    if (!isProUnlocked) {
+                                        LauncherHaptics.playClick(context)
+                                        onOpenProSheet()
+                                    } else {
+                                        onBiometricLockToggled(it)
+                                    }
+                                },
                                 modifier = Modifier.testTag("biometric_lock_toggle"),
                                 colors = SwitchDefaults.colors(
                                     checkedThumbColor = MaterialTheme.colorScheme.onPrimary,
@@ -733,6 +1098,91 @@ fun SettingsSheet(
                                     uncheckedTrackColor = MaterialTheme.colorScheme.surfaceVariant
                                 )
                             )
+                        }
+
+                        if (isBiometricLockEnabled) {
+                            HorizontalDivider(
+                                color = MaterialTheme.colorScheme.outline.copy(alpha = 0.15f),
+                                modifier = Modifier.padding(horizontal = 16.dp)
+                            )
+
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(16.dp),
+                                verticalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                Text(
+                                    text = "Lock Method Preference",
+                                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    FilterChip(
+                                        selected = lockMethod == "pin",
+                                        onClick = {
+                                            LauncherHaptics.playClick(context)
+                                            onLockMethodChanged("pin")
+                                        },
+                                        leadingIcon = {
+                                            Icon(
+                                                imageVector = Icons.Outlined.Pin,
+                                                contentDescription = null,
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                        },
+                                        label = { Text("Custom 4-Digit PIN", style = MaterialTheme.typography.labelSmall) },
+                                        modifier = Modifier.weight(1f)
+                                    )
+
+                                    FilterChip(
+                                        selected = lockMethod == "biometric",
+                                        onClick = {
+                                            LauncherHaptics.playClick(context)
+                                            onLockMethodChanged("biometric")
+                                        },
+                                        leadingIcon = {
+                                            Icon(
+                                                imageVector = Icons.Outlined.Fingerprint,
+                                                contentDescription = null,
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                        },
+                                        label = { Text("System Biometrics", style = MaterialTheme.typography.labelSmall) },
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                }
+
+                                if (lockMethod == "pin") {
+                                    Button(
+                                        onClick = {
+                                            LauncherHaptics.playClick(context)
+                                            onOpenSetPinDialog()
+                                        },
+                                        colors = ButtonDefaults.buttonColors(
+                                            containerColor = MaterialTheme.colorScheme.primaryContainer,
+                                            contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                                        ),
+                                        shape = RoundedCornerShape(12.dp),
+                                        modifier = Modifier.fillMaxWidth().height(42.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Outlined.Pin,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text(
+                                            text = if (customPin.isBlank()) "Set 4-Digit Secret PIN" else "Change 4-Digit PIN (PIN Set)",
+                                            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold)
+                                        )
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -822,7 +1272,6 @@ fun SettingsSheet(
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .clickable {
-                                            onDismiss()
                                             onOpenRssManager()
                                         }
                                         .padding(16.dp),
@@ -961,7 +1410,7 @@ fun SettingsSheet(
                                                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                                             }
                                             context.startActivity(intent)
-                                        } catch (e: Exception) {
+                                        } catch (_: Exception) {
                                             try {
                                                 val fallbackIntent = Intent(Settings.ACTION_SETTINGS).apply {
                                                     addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
@@ -1000,7 +1449,7 @@ fun SettingsSheet(
                                             color = MaterialTheme.colorScheme.onSurface
                                         )
                                         Text(
-                                            text = "Open system settings to select FREE Launcher",
+                                            text = "Open system settings to select noma",
                                             style = MaterialTheme.typography.bodySmall,
                                             color = MaterialTheme.colorScheme.secondary
                                         )
@@ -1019,12 +1468,90 @@ fun SettingsSheet(
                                 modifier = Modifier.padding(horizontal = 16.dp)
                             )
 
+                            // Backup & Restore Row (Pro)
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        if (!isProUnlocked) {
+                                            LauncherHaptics.playClick(context)
+                                            onOpenProSheet()
+                                        } else {
+                                            onOpenBackupSheet()
+                                        }
+                                    }
+                                    .padding(16.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(14.dp),
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(38.dp)
+                                            .clip(RoundedCornerShape(10.dp))
+                                            .background(MaterialTheme.colorScheme.primaryContainer),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Outlined.Backup,
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                    }
+                                    Column {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                        ) {
+                                            Text(
+                                                text = "Backup & Restore",
+                                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Medium),
+                                                color = MaterialTheme.colorScheme.onSurface
+                                            )
+                                            if (!isProUnlocked) {
+                                                Surface(
+                                                    shape = RoundedCornerShape(4.dp),
+                                                    color = MaterialTheme.colorScheme.primary
+                                                ) {
+                                                    Text(
+                                                        text = "PRO",
+                                                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.ExtraBold, fontSize = 8.sp),
+                                                        color = MaterialTheme.colorScheme.onPrimary,
+                                                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                                                    )
+                                                }
+                                            }
+                                        }
+                                        Text(
+                                            text = "Export or import launcher settings and layout as JSON",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.secondary
+                                        )
+                                    }
+                                }
+                                Icon(
+                                    imageVector = Icons.Outlined.ChevronRight,
+                                    contentDescription = "Backup and Restore",
+                                    tint = MaterialTheme.colorScheme.secondary,
+                                    modifier = Modifier.size(22.dp)
+                                )
+                            }
+
+                            HorizontalDivider(
+                                color = MaterialTheme.colorScheme.outline.copy(alpha = 0.15f),
+                                modifier = Modifier.padding(horizontal = 16.dp)
+                            )
+
                             // Gesture & Onboarding Guide Row
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .clickable {
-                                        onDismiss()
                                         onOpenOnboardingGuide()
                                     }
                                     .padding(16.dp),
@@ -1070,6 +1597,62 @@ fun SettingsSheet(
                                     modifier = Modifier.size(22.dp)
                                 )
                             }
+
+                            HorizontalDivider(
+                                color = MaterialTheme.colorScheme.outline.copy(alpha = 0.15f),
+                                modifier = Modifier.padding(horizontal = 16.dp)
+                            )
+
+                            // About noma & Support Row
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        onOpenAboutSheet()
+                                    }
+                                    .padding(16.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(14.dp),
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(38.dp)
+                                            .clip(RoundedCornerShape(10.dp))
+                                            .background(MaterialTheme.colorScheme.primaryContainer),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Outlined.Info,
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                    }
+                                    Column {
+                                        Text(
+                                            text = "About noma & Support",
+                                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Medium),
+                                            color = MaterialTheme.colorScheme.onSurface
+                                        )
+                                        Text(
+                                            text = "Donation, reviews, privacy policy, and feedback",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.secondary
+                                        )
+                                    }
+                                }
+                                Icon(
+                                    imageVector = Icons.Outlined.ChevronRight,
+                                    contentDescription = "About noma",
+                                    tint = MaterialTheme.colorScheme.secondary,
+                                    modifier = Modifier.size(22.dp)
+                                )
+                            }
                         }
                     }
                 }
@@ -1084,7 +1667,7 @@ fun SettingsSheet(
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     Text(
-                        text = "FREE LAUNCHER",
+                        text = "NOMA",
                         style = MaterialTheme.typography.labelMedium.copy(
                             fontWeight = FontWeight.Bold,
                             letterSpacing = 2.sp
@@ -1093,7 +1676,7 @@ fun SettingsSheet(
                     )
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
-                        text = "Version 1.2 • Digital Wellness & Focus",
+                        text = "Version ${com.freelauncher.app.BuildConfig.VERSION_NAME} • Digital Wellness & Focus",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.secondary.copy(alpha = 0.7f)
                     )
@@ -1173,6 +1756,7 @@ fun MaterialYouCard(
 fun ClockStyleCard(
     style: ClockStyle,
     isSelected: Boolean,
+    isProLocked: Boolean = false,
     previewTime: Date,
     onClick: () -> Unit
 ) {
@@ -1184,12 +1768,13 @@ fun ClockStyleCard(
     val contentColor = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant
     val borderColor = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)
 
-    // Pre-memoize formatters
-    val hMmFormat = remember { SimpleDateFormat("h:mm", Locale.getDefault()) }
-    val hFormat = remember { SimpleDateFormat("h", Locale.getDefault()) }
-    val mmFormat = remember { SimpleDateFormat("mm", Locale.getDefault()) }
-    val hMmAFormat = remember { SimpleDateFormat("h:mm a", Locale.getDefault()) }
-    val hhMmFormat = remember { SimpleDateFormat("hh:mm", Locale.getDefault()) }
+    // Use unified DateTimeUtils
+    val locale = remember { Locale.getDefault() }
+    val hMm = DateTimeUtils.format(previewTime, DateTimeUtils.Patterns.TIME_HM, locale)
+    val hStr = DateTimeUtils.format(previewTime, DateTimeUtils.Patterns.TIME_HOUR, locale)
+    val mmStr = DateTimeUtils.format(previewTime, DateTimeUtils.Patterns.TIME_MINUTE, locale)
+    val hMmA = DateTimeUtils.format(previewTime, DateTimeUtils.Patterns.TIME_HM_A, locale)
+    val hhMm = DateTimeUtils.format(previewTime, DateTimeUtils.Patterns.TIME_HH_MM, locale)
 
     Surface(
         modifier = Modifier
@@ -1218,7 +1803,7 @@ fun ClockStyleCard(
                 when (style) {
                     ClockStyle.LARGE_DIGITAL -> {
                         Text(
-                            text = hMmFormat.format(previewTime),
+                            text = hMm,
                             style = MaterialTheme.typography.titleLarge.copy(
                                 fontWeight = FontWeight.Light,
                                 fontSize = 20.sp
@@ -1228,7 +1813,7 @@ fun ClockStyleCard(
                     }
                     ClockStyle.THIN_DIGITAL -> {
                         Text(
-                            text = hMmFormat.format(previewTime),
+                            text = hMm,
                             style = MaterialTheme.typography.titleLarge.copy(
                                 fontWeight = FontWeight.ExtraLight,
                                 letterSpacing = 1.sp,
@@ -1239,7 +1824,7 @@ fun ClockStyleCard(
                     }
                     ClockStyle.MONOSPACED -> {
                         Text(
-                            text = "[ ${hMmFormat.format(previewTime)} ]",
+                            text = "[ $hMm ]",
                             style = MaterialTheme.typography.bodyMedium.copy(
                                 fontWeight = FontWeight.Medium,
                                 fontSize = 13.sp
@@ -1250,12 +1835,12 @@ fun ClockStyleCard(
                     ClockStyle.MINIMAL_STACKED -> {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             Text(
-                                text = hFormat.format(previewTime),
+                                text = hStr,
                                 style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold, fontSize = 14.sp),
                                 color = contentColor
                             )
                             Text(
-                                text = mmFormat.format(previewTime),
+                                text = mmStr,
                                 style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Light, fontSize = 14.sp),
                                 color = contentColor
                             )
@@ -1275,14 +1860,14 @@ fun ClockStyleCard(
                     }
                     ClockStyle.COMPACT -> {
                         Text(
-                            text = hMmAFormat.format(previewTime),
+                            text = hMmA,
                             style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Normal, fontSize = 13.sp),
                             color = contentColor
                         )
                     }
                     ClockStyle.ELEGANT_SERIF -> {
                         Text(
-                            text = hhMmFormat.format(previewTime),
+                            text = hhMm,
                             style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Medium, fontSize = 16.sp),
                             color = contentColor
                         )
@@ -1293,16 +1878,84 @@ fun ClockStyleCard(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
-                                text = hFormat.format(previewTime),
+                                text = hStr,
                                 style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold),
                                 color = contentColor
                             )
                             Box(modifier = Modifier.size(4.dp).clip(CircleShape).background(contentColor))
                             Text(
-                                text = mmFormat.format(previewTime),
+                                text = DateTimeUtils.format(previewTime, DateTimeUtils.Patterns.TIME_MINUTE, locale),
                                 style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold),
                                 color = contentColor
                             )
+                        }
+                    }
+                    ClockStyle.HANDWRITTEN -> {
+                        Text(
+                            text = hMm,
+                            style = MaterialTheme.typography.titleLarge.copy(fontFamily = androidx.compose.ui.text.font.FontFamily.Cursive, fontSize = 20.sp),
+                            color = contentColor
+                        )
+                    }
+                    ClockStyle.OUTLINE -> {
+                        Text(
+                            text = hMm,
+                            style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Black, fontSize = 22.sp),
+                            color = contentColor
+                        )
+                    }
+                    ClockStyle.BOLD_BLOCK -> {
+                        Text(
+                            text = hMm,
+                            style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Black, fontSize = 24.sp, letterSpacing = (-2).sp),
+                            color = contentColor
+                        )
+                    }
+                    ClockStyle.MINIMAL_SECONDS -> {
+                        Row(verticalAlignment = Alignment.Bottom) {
+                            Text(
+                                text = hMm,
+                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Light),
+                                color = contentColor
+                            )
+                            Text(
+                                text = "45",
+                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp),
+                                color = contentColor.copy(alpha = 0.7f),
+                                modifier = Modifier.padding(bottom = 2.dp, start = 2.dp)
+                            )
+                        }
+                    }
+                    ClockStyle.BUBBLY_3D -> {
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = contentColor.copy(alpha = 0.15f),
+                                border = BorderStroke(0.5.dp, contentColor.copy(alpha = 0.3f))
+                            ) {
+                                Text(
+                                    text = hStr,
+                                    style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.ExtraBold, fontSize = 13.sp),
+                                    color = contentColor,
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                )
+                            }
+                            Text(text = ":", style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.ExtraBold), color = contentColor)
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = contentColor.copy(alpha = 0.15f),
+                                border = BorderStroke(0.5.dp, contentColor.copy(alpha = 0.3f))
+                            ) {
+                                Text(
+                                    text = mmStr,
+                                    style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.ExtraBold, fontSize = 13.sp),
+                                    color = contentColor,
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                )
+                            }
                         }
                     }
                 }
@@ -1324,7 +1977,20 @@ fun ClockStyleCard(
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f)
                 )
-                if (isSelected) {
+                if (isProLocked) {
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Surface(
+                        shape = RoundedCornerShape(4.dp),
+                        color = MaterialTheme.colorScheme.primaryContainer
+                    ) {
+                        Text(
+                            text = "PRO",
+                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.ExtraBold, fontSize = 8.sp),
+                            color = MaterialTheme.colorScheme.onPrimaryContainer,
+                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                        )
+                    }
+                } else if (isSelected) {
                     Box(
                         modifier = Modifier
                             .size(16.dp)

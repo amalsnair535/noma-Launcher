@@ -1,3 +1,4 @@
 <resources>
-    <string name="app_name">FREE Launcher</string>
+    <string name="app_name">noma</string>
+    <string name="accessibility_service_description">Allows noma to turn off and lock your screen when double-tapping empty space on the home screen.</string>
 </resources>

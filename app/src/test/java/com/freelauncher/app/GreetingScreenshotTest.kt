@@ -1,6 +1,6 @@
 package com.freelauncher.app
 
-import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onRoot
 import com.freelauncher.app.ui.screens.HomeScreen
 import com.freelauncher.app.ui.theme.FreeLauncherTheme
@@ -9,6 +9,7 @@ import com.freelauncher.app.ui.theme.LauncherThemeMode
 import com.freelauncher.app.ui.viewmodel.LauncherUiState
 import com.github.takahirom.roborazzi.RobolectricDeviceQualifiers
 import com.github.takahirom.roborazzi.captureRoboImage
+import java.util.Date
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -32,6 +33,7 @@ class GreetingScreenshotTest {
       ) {
         HomeScreen(
           state = LauncherUiState(),
+          currentTime = Date(),
           onNavigate = {},
           onOpenSettings = {}
         )

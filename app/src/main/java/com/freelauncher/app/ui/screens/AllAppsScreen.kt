@@ -4,6 +4,8 @@ import android.app.SearchManager
 import android.content.Intent
 import android.net.Uri
 import android.provider.Settings
+import kotlinx.coroutines.delay
+import kotlin.time.Duration.Companion.milliseconds
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -39,24 +41,30 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.freelauncher.app.data.models.AppCategory
+import com.freelauncher.app.R
 import com.freelauncher.app.data.models.AppCategoryInfo
 import com.freelauncher.app.data.models.AppItem
 import com.freelauncher.app.data.service.ContactSearchResult
 import com.freelauncher.app.data.service.MessageSearchResult
 import com.freelauncher.app.data.service.SettingSearchResult
 import com.freelauncher.app.data.service.UniversalSearchManager
+import com.freelauncher.app.ui.util.DateTimeUtils
 import com.freelauncher.app.ui.util.LauncherHaptics
+import timber.log.Timber
 import com.freelauncher.app.ui.util.TrackScrollHaptics
 import com.freelauncher.app.ui.viewmodel.LauncherScreen
 import com.freelauncher.app.ui.viewmodel.LauncherUiState
@@ -86,6 +94,15 @@ fun AllAppsScreen(
     var totalDragX by remember { mutableFloatStateOf(0f) }
     val lazyListState = rememberLazyListState()
     TrackScrollHaptics(lazyListState)
+
+    val focusRequester = remember { FocusRequester() }
+    val keyboardController = LocalSoftwareKeyboardController.current
+
+    LaunchedEffect(Unit) {
+        focusRequester.requestFocus()
+        delay(120.milliseconds)
+        keyboardController?.show()
+    }
 
     // Permission launcher for contacts search
     var hasContactsPerm by remember {
@@ -140,7 +157,7 @@ fun AllAppsScreen(
         }
     }
 
-    // 3. Universal Search: Contacts
+    // 3. Universal Search: Contacts & Phone Dial
     val matchingContacts = remember(state.searchQuery, hasContactsPerm) {
         if (state.searchQuery.isNotBlank() && hasContactsPerm) {
             UniversalSearchManager.searchContacts(context, state.searchQuery)
@@ -148,6 +165,14 @@ fun AllAppsScreen(
             emptyList()
         }
     }
+
+    val isPhoneQuery = remember(state.searchQuery) {
+        UniversalSearchManager.isPhoneNumberQuery(state.searchQuery)
+    }
+    val isNumberInContacts = remember(state.searchQuery, matchingContacts) {
+        UniversalSearchManager.isNumberInContacts(state.searchQuery, matchingContacts)
+    }
+    val showQuickDial = isPhoneQuery && !isNumberInContacts
 
     // 4. Universal Search: Messages
     val matchingMessages = remember(state.searchQuery, hasSmsPerm) {
@@ -158,31 +183,55 @@ fun AllAppsScreen(
         }
     }
 
+    val visibleCategories = remember(state.categories) {
+        state.categories.filter { !it.isHidden }
+    }
+    val categoryFilterIds = remember(visibleCategories) {
+        listOf<String?>(null) + visibleCategories.map { it.id }
+    }
+    val categoryScrollState = rememberScrollState()
+
+    LaunchedEffect(selectedCategoryFilterId) {
+        val index = categoryFilterIds.indexOf(selectedCategoryFilterId).coerceAtLeast(0)
+        val approxOffset = (index * 85 * context.resources.displayMetrics.density).toInt()
+        categoryScrollState.animateScrollTo(approxOffset)
+    }
+
     Column(
         modifier = modifier
             .fillMaxSize()
             .statusBarsPadding()
             .navigationBarsPadding()
             .padding(top = 44.dp)
-            .pointerInput(Unit) {
+            .pointerInput(categoryFilterIds, selectedCategoryFilterId) {
                 detectDragGestures(
                     onDragStart = {
                         totalDragY = 0f
                         totalDragX = 0f
                     },
                     onDragEnd = {
-                        val threshold = 60f
-                        // Swipe Down -> Home
-                        if (totalDragY > threshold && abs(totalDragY) > abs(totalDragX) * 0.7f) {
-                            onNavigate(LauncherScreen.HOME)
-                        }
-                        // Swipe Left -> Home
-                        else if (totalDragX < -threshold && abs(totalDragX) > abs(totalDragY) * 0.7f) {
-                            onNavigate(LauncherScreen.HOME)
-                        }
-                        // Swipe Right -> Home
-                        else if (totalDragX > threshold && abs(totalDragX) > abs(totalDragY) * 0.7f) {
-                            onNavigate(LauncherScreen.HOME)
+                        val threshold = 50f
+                        val isHorizontal = abs(totalDragX) > abs(totalDragY) * 1.1f
+                        val isVertical = abs(totalDragY) > abs(totalDragX) * 1.1f
+
+                        if (isHorizontal) {
+                            val currentIndex = categoryFilterIds.indexOf(selectedCategoryFilterId).coerceAtLeast(0)
+                            if (totalDragX < -threshold) {
+                                // Swipe Left -> Next Category
+                                val nextIndex = (currentIndex + 1) % categoryFilterIds.size
+                                LauncherHaptics.playClick(context)
+                                selectedCategoryFilterId = categoryFilterIds[nextIndex]
+                            } else if (totalDragX > threshold) {
+                                // Swipe Right -> Previous Category
+                                val prevIndex = if (currentIndex - 1 < 0) categoryFilterIds.size - 1 else currentIndex - 1
+                                LauncherHaptics.playClick(context)
+                                selectedCategoryFilterId = categoryFilterIds[prevIndex]
+                            }
+                        } else if (isVertical) {
+                            if (totalDragY > threshold) {
+                                // Swipe Down -> Return Home
+                                onNavigate(LauncherScreen.HOME)
+                            }
                         }
                     },
                     onDrag = { change, dragAmount ->
@@ -252,6 +301,7 @@ fun AllAppsScreen(
                         cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
                         modifier = Modifier
                             .weight(1f)
+                            .focusRequester(focusRequester)
                             .testTag("apps_search_input"),
                         decorationBox = { innerTextField ->
                             if (state.searchQuery.isEmpty()) {
@@ -288,7 +338,7 @@ fun AllAppsScreen(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState())
+                    .horizontalScroll(categoryScrollState)
                     .padding(horizontal = 20.dp, vertical = 6.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically
@@ -305,7 +355,6 @@ fun AllAppsScreen(
                 )
 
                 // Visible Categories (ordered according to user structure)
-                val visibleCategories = state.categories.filter { !it.isHidden }
                 visibleCategories.forEach { category ->
                     val isSelected = selectedCategoryFilterId == category.id
                     CategoryChip(
@@ -460,7 +509,7 @@ fun AllAppsScreen(
                                             flags = Intent.FLAG_ACTIVITY_NEW_TASK
                                         })
                                     } catch (e2: Exception) {
-                                        e2.printStackTrace()
+                                        Timber.e(e2)
                                     }
                                 }
                             }
@@ -468,40 +517,88 @@ fun AllAppsScreen(
                     }
                 }
 
-                // Section 3: Contacts
-                if (matchingContacts.isNotEmpty()) {
+                // Section 3: Contacts & Quick Dial
+                if (matchingContacts.isNotEmpty() || showQuickDial) {
                     item(key = "search_header_contacts") {
-                        SearchSectionHeader(title = "CONTACTS (${matchingContacts.size})")
+                        val headerTitle = when {
+                            matchingContacts.isNotEmpty() -> "CONTACTS (${matchingContacts.size})"
+                            else -> "PHONE DIALER"
+                        }
+                        SearchSectionHeader(title = headerTitle)
                     }
-                    items(
-                        items = matchingContacts,
-                        key = { "contact_${it.id}_${it.phoneNumber}" }
-                    ) { contact ->
-                        ContactResultRowItem(
-                            contact = contact,
-                            onCall = {
-                                try {
-                                    val callIntent = Intent(Intent.ACTION_DIAL).apply {
-                                        data = Uri.parse("tel:${contact.phoneNumber}")
-                                        flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                    if (matchingContacts.isNotEmpty()) {
+                        items(
+                            items = matchingContacts,
+                            key = { "contact_${it.id}_${it.phoneNumber}" }
+                        ) { contact ->
+                            ContactResultRowItem(
+                                contact = contact,
+                                onCall = {
+                                    try {
+                                        val callIntent = Intent(Intent.ACTION_DIAL).apply {
+                                            data = Uri.parse("tel:${contact.phoneNumber}")
+                                            flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                                        }
+                                        context.startActivity(callIntent)
+                                    } catch (e: Exception) {
+                                        Timber.e(e)
                                     }
-                                    context.startActivity(callIntent)
-                                } catch (e: Exception) {
-                                    e.printStackTrace()
-                                }
-                            },
-                            onMessage = {
-                                try {
-                                    val smsIntent = Intent(Intent.ACTION_SENDTO).apply {
-                                        data = Uri.parse("smsto:${contact.phoneNumber}")
-                                        flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                                },
+                                onMessage = {
+                                    try {
+                                        val smsIntent = Intent(Intent.ACTION_SENDTO).apply {
+                                            data = Uri.parse("smsto:${contact.phoneNumber}")
+                                            flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                                        }
+                                        context.startActivity(smsIntent)
+                                    } catch (e: Exception) {
+                                        Timber.e(e)
                                     }
-                                    context.startActivity(smsIntent)
-                                } catch (e: Exception) {
-                                    e.printStackTrace()
+                                },
+                                onWhatsApp = {
+                                    try {
+                                        val cleanNumber = contact.phoneNumber.replace(Regex("[^0-9]"), "")
+                                        val whatsappIntent = Intent(Intent.ACTION_VIEW).apply {
+                                            data = Uri.parse("https://api.whatsapp.com/send?phone=$cleanNumber")
+                                            flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                                        }
+                                        context.startActivity(whatsappIntent)
+                                    } catch (e: Exception) {
+                                        Timber.e(e)
+                                    }
                                 }
-                            }
-                        )
+                            )
+                        }
+                    }
+                    if (showQuickDial) {
+                        item(key = "quick_dial_number") {
+                            DialActionRowItem(
+                                phoneNumber = state.searchQuery,
+                                onDial = {
+                                    try {
+                                        val callIntent = Intent(Intent.ACTION_DIAL).apply {
+                                            data = Uri.parse("tel:${Uri.encode(state.searchQuery)}")
+                                            flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                                        }
+                                        context.startActivity(callIntent)
+                                    } catch (e: Exception) {
+                                        Timber.e(e)
+                                    }
+                                },
+                                onWhatsApp = {
+                                    try {
+                                        val cleanNumber = state.searchQuery.replace(Regex("[^0-9]"), "")
+                                        val whatsappIntent = Intent(Intent.ACTION_VIEW).apply {
+                                            data = Uri.parse("https://api.whatsapp.com/send?phone=$cleanNumber")
+                                            flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                                        }
+                                        context.startActivity(whatsappIntent)
+                                    } catch (e: Exception) {
+                                        Timber.e(e)
+                                    }
+                                }
+                            )
+                        }
                     }
                 } else if (!hasContactsPerm) {
                     // Discreet affordance to enable contacts search
@@ -565,7 +662,7 @@ fun AllAppsScreen(
                                 }
                                 context.startActivity(smsIntent)
                             } catch (e: Exception) {
-                                e.printStackTrace()
+                                Timber.e(e)
                             }
                         }
                     )
@@ -586,8 +683,8 @@ fun AllAppsScreen(
                                     }
                                     context.startActivity(smsIntent)
                                 } catch (e: Exception) {
-                                    e.printStackTrace()
-                                }
+                                Timber.e(e)
+                            }
                             }
                         )
                     }
@@ -658,7 +755,7 @@ fun AllAppsScreen(
                                         }
                                         context.startActivity(browserIntent)
                                     } catch (e2: Exception) {
-                                        e2.printStackTrace()
+                                        Timber.e(e2)
                                     }
                                 }
                             }
@@ -710,7 +807,7 @@ fun AllAppsScreen(
                                     try {
                                         context.startActivity(UniversalSearchManager.getYouTubeWebSearchIntent(state.searchQuery))
                                     } catch (e2: Exception) {
-                                        e2.printStackTrace()
+                                        Timber.e(e2)
                                     }
                                 }
                             }
@@ -924,7 +1021,8 @@ fun SettingResultRowItem(
 fun ContactResultRowItem(
     contact: ContactSearchResult,
     onCall: () -> Unit,
-    onMessage: () -> Unit
+    onMessage: () -> Unit,
+    onWhatsApp: () -> Unit
 ) {
     Row(
         modifier = Modifier
@@ -979,10 +1077,10 @@ fun ContactResultRowItem(
             }
         }
 
-        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
             IconButton(
                 onClick = onCall,
-                modifier = Modifier.size(36.dp)
+                modifier = Modifier.size(34.dp)
             ) {
                 Icon(
                     imageVector = Icons.Outlined.Call,
@@ -993,13 +1091,108 @@ fun ContactResultRowItem(
             }
             IconButton(
                 onClick = onMessage,
-                modifier = Modifier.size(36.dp)
+                modifier = Modifier.size(34.dp)
             ) {
                 Icon(
                     imageVector = Icons.AutoMirrored.Outlined.Message,
                     contentDescription = "Message",
                     tint = MaterialTheme.colorScheme.secondary,
                     modifier = Modifier.size(18.dp)
+                )
+            }
+            IconButton(
+                onClick = onWhatsApp,
+                modifier = Modifier.size(34.dp)
+            ) {
+                Icon(
+                    painter = painterResource(id = R.drawable.ic_whatsapp),
+                    contentDescription = "WhatsApp",
+                    tint = Color.Unspecified,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun DialActionRowItem(
+    phoneNumber: String,
+    onDial: () -> Unit,
+    onWhatsApp: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(6.dp))
+            .clickable(onClick = onDial)
+            .padding(vertical = 8.dp, horizontal = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.weight(1f),
+            horizontalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(34.dp)
+                    .clip(RoundedCornerShape(6.dp))
+                    .border(
+                        0.75.dp,
+                        MaterialTheme.colorScheme.outline.copy(alpha = 0.4f),
+                        RoundedCornerShape(6.dp)
+                    )
+                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Outlined.Call,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(18.dp)
+                )
+            }
+
+            Column {
+                Text(
+                    text = "Dial \"$phoneNumber\"",
+                    style = MaterialTheme.typography.bodyLarge.copy(
+                        fontSize = 17.sp,
+                        fontWeight = FontWeight.Normal
+                    ),
+                    color = MaterialTheme.colorScheme.onBackground
+                )
+                Text(
+                    text = "Not in contacts • Tap to call",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.secondary.copy(alpha = 0.8f)
+                )
+            }
+        }
+
+        Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+            IconButton(
+                onClick = onDial,
+                modifier = Modifier.size(34.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Outlined.Call,
+                    contentDescription = "Dial",
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(18.dp)
+                )
+            }
+            IconButton(
+                onClick = onWhatsApp,
+                modifier = Modifier.size(34.dp)
+            ) {
+                Icon(
+                    painter = painterResource(id = R.drawable.ic_whatsapp),
+                    contentDescription = "WhatsApp",
+                    tint = Color.Unspecified,
+                    modifier = Modifier.size(20.dp)
                 )
             }
         }
@@ -1034,7 +1227,7 @@ fun MessageActionRowItem(
             contentAlignment = Alignment.Center
         ) {
             Icon(
-                imageVector = Icons.Outlined.Message,
+                imageVector = Icons.AutoMirrored.Outlined.Message,
                 contentDescription = null,
                 tint = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.size(18.dp)
@@ -1066,7 +1259,7 @@ fun MessageItemRow(
 ) {
     val dateStr = remember(message.date) {
         if (message.date > 0) {
-            SimpleDateFormat("MMM d, h:mm a", Locale.getDefault()).format(message.date)
+            DateTimeUtils.format(java.util.Date(message.date), DateTimeUtils.Patterns.DATE_MMM_D_HM_A)
         } else ""
     }
 

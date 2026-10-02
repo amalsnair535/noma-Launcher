@@ -1,6 +1,7 @@
 package com.freelauncher.app.ui.util
 
 import android.content.Context
+import timber.log.Timber
 import androidx.biometric.BiometricManager
 import androidx.biometric.BiometricPrompt
 import androidx.core.content.ContextCompat
@@ -67,7 +68,7 @@ object BiometricHelper {
         try {
             biometricPrompt.authenticate(promptInfo)
         } catch (e: Exception) {
-            e.printStackTrace()
+            Timber.e(e)
             onError(e.message ?: "Authentication error")
         }
     }

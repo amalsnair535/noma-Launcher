@@ -1,0 +1,9 @@
+- [/] Time Away Screen Implementation
+    - [ ] Update `DigitalWellbeingService.kt` with Phone-Free logic
+    - [ ] Update `LauncherViewModel.kt` (State and Navigation enum)
+    - [ ] Create `TimeAwayScreen.kt`
+    - [ ] Implement right-swipe navigation in `HomeScreen.kt` & `SixAppsView.kt`
+    - [ ] Add transition animations in `MainActivity.kt`
+- [ ] Verification
+    - [ ] Run build
+    - [ ] Test gestures and real-time data

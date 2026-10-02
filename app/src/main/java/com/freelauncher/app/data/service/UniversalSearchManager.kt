@@ -7,6 +7,7 @@ import android.net.Uri
 import android.provider.ContactsContract
 import android.provider.Settings
 import androidx.core.content.ContextCompat
+import timber.log.Timber
 import java.util.Locale
 
 data class SettingSearchResult(
@@ -193,7 +194,7 @@ object UniversalSearchManager {
                 }
             }
         } catch (e: Exception) {
-            e.printStackTrace()
+            Timber.e(e)
         }
 
         return results
@@ -246,10 +247,28 @@ object UniversalSearchManager {
                 }
             }
         } catch (e: Exception) {
-            e.printStackTrace()
+            Timber.e(e)
         }
 
         return results
+    }
+
+    fun isPhoneNumberQuery(query: String): Boolean {
+        val trimmed = query.trim()
+        if (trimmed.length < 3) return false
+        val digitsCount = trimmed.count { it.isDigit() }
+        if (digitsCount < 3) return false
+        val phoneCharCount = trimmed.count { it.isDigit() || it == '+' || it == '-' || it == '(' || it == ')' || it == ' ' || it == '.' }
+        return (phoneCharCount.toFloat() / trimmed.length.toFloat()) >= 0.8f
+    }
+
+    fun isNumberInContacts(query: String, contacts: List<ContactSearchResult>): Boolean {
+        val searchDigits = query.replace(Regex("[^0-9]"), "")
+        if (searchDigits.isEmpty()) return false
+        return contacts.any { contact ->
+            val contactDigits = contact.phoneNumber.replace(Regex("[^0-9]"), "")
+            contactDigits.isNotEmpty() && (contactDigits.contains(searchDigits) || searchDigits.contains(contactDigits))
+        }
     }
 
     fun getYouTubeSearchIntent(query: String): Intent {

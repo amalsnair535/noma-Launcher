@@ -29,57 +29,164 @@ class InstalledAppsService(private val context: Context) {
                 addCategory(Intent.CATEGORY_LAUNCHER)
             }
 
-            val resolveInfos: List<ResolveInfo> = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                packageManager.queryIntentActivities(
-                    intent,
-                    PackageManager.ResolveInfoFlags.of(0)
-                )
-            } else {
-                @Suppress("DEPRECATION")
-                packageManager.queryIntentActivities(intent, 0)
-            }
-
             val myPackageName = context.packageName
             val apps = mutableListOf<AppItem>()
             val seenIds = mutableSetOf<String>()
+            val seenPackages = mutableSetOf<String>()
 
-            for (resolveInfo in resolveInfos) {
-                val activityInfo = resolveInfo.activityInfo ?: continue
-                val pkgName = activityInfo.packageName ?: continue
-                // Exclude the launcher itself from the app list
-                if (pkgName == myPackageName) continue
+            val launcherApps = context.getSystemService(Context.LAUNCHER_APPS_SERVICE) as? android.content.pm.LauncherApps
+            val userManager = context.getSystemService(Context.USER_SERVICE) as? android.os.UserManager
 
-                val activityName = activityInfo.name ?: ""
-                val label = try {
-                    resolveInfo.loadLabel(packageManager).toString().trim()
+            val profiles: List<android.os.UserHandle> = if (userManager != null) {
+                try {
+                    userManager.userProfiles
                 } catch (e: Exception) {
-                    pkgName
+                    listOf(android.os.Process.myUserHandle())
+                }
+            } else {
+                listOf(android.os.Process.myUserHandle())
+            }
+
+            if (launcherApps != null && userManager != null) {
+                val currentMyUserHandle = android.os.Process.myUserHandle()
+                for (userHandle in profiles) {
+                    val userSerialNumber = try {
+                        userManager.getSerialNumberForUser(userHandle)
+                    } catch (e: Exception) {
+                        0L
+                    }
+                    val isSecondaryUser = userHandle != currentMyUserHandle
+
+                    val launcherActivities = try {
+                        launcherApps.getActivityList(null, userHandle)
+                    } catch (e: Exception) {
+                        emptyList()
+                    }
+
+                    for (activityInfo in launcherActivities) {
+                        val pkgName = activityInfo.applicationInfo.packageName ?: continue
+                        if (pkgName == myPackageName) continue
+
+                        val isDialerOrContacts = pkgName.contains("dialer", ignoreCase = true) ||
+                                pkgName.contains("contact", ignoreCase = true) ||
+                                pkgName.contains("phone", ignoreCase = true)
+                        
+                        val packageKey = if (isSecondaryUser) "$pkgName#user_$userSerialNumber" else pkgName
+                        if (!isDialerOrContacts) {
+                            if (seenPackages.contains(packageKey)) continue
+                            seenPackages.add(packageKey)
+                        }
+
+                        val activityName = activityInfo.name ?: ""
+                        val rawLabel = try {
+                            activityInfo.label.toString().trim()
+                        } catch (e: Exception) {
+                            pkgName
+                        }
+
+                        val label = if (isSecondaryUser && !rawLabel.contains("Dual", ignoreCase = true) && !rawLabel.contains("(Dual)", ignoreCase = true)) {
+                            "$rawLabel (Dual)"
+                        } else {
+                            rawLabel
+                        }
+
+                        val category = categorizeApp(null, label, pkgName)
+                        val monogram = generateMonogram(label, pkgName)
+
+                        val uniqueId = if (isSecondaryUser) {
+                            "$pkgName/$activityName#user_$userSerialNumber"
+                        } else {
+                            if (activityName.isNotBlank()) "$pkgName/$activityName" else "$pkgName#$label"
+                        }
+
+                        if (seenIds.contains(uniqueId)) continue
+                        seenIds.add(uniqueId)
+
+                        val pinIndex = pinnedIds.indexOf(uniqueId)
+                        val isPinned = pinIndex != -1
+
+                        apps.add(
+                            AppItem(
+                                id = uniqueId,
+                                packageName = pkgName,
+                                activityName = activityName,
+                                label = label,
+                                category = category,
+                                categoryId = category.name,
+                                categoryTitle = category.title,
+                                monogram = monogram,
+                                isPinned = isPinned,
+                                pinIndex = pinIndex,
+                                userSerialNumber = userSerialNumber,
+                                isDualApp = isSecondaryUser
+                            )
+                        )
+                    }
+                }
+            }
+
+            if (apps.isEmpty()) {
+                val flags = PackageManager.MATCH_DEFAULT_ONLY
+                val resolveInfos: List<ResolveInfo> = try {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                        packageManager.queryIntentActivities(
+                            intent,
+                            PackageManager.ResolveInfoFlags.of(flags.toLong())
+                        )
+                    } else {
+                        packageManager.queryIntentActivities(intent, flags)
+                    }
+                } catch (e: Exception) {
+                    emptyList()
                 }
 
-                val category = categorizeApp(resolveInfo, label, pkgName)
-                val monogram = generateMonogram(label, pkgName)
-                val uniqueId = if (activityName.isNotBlank()) "$pkgName/$activityName" else "$pkgName#$label"
+                for (resolveInfo in resolveInfos) {
+                    val activityInfo = resolveInfo.activityInfo ?: continue
+                    val pkgName = activityInfo.packageName ?: continue
+                    if (pkgName == myPackageName) continue
 
-                if (seenIds.contains(uniqueId)) continue
-                seenIds.add(uniqueId)
+                    val isDialerOrContacts = pkgName.contains("dialer", ignoreCase = true) || 
+                            pkgName.contains("contact", ignoreCase = true) || 
+                            pkgName.contains("phone", ignoreCase = true)
+                    
+                    if (!isDialerOrContacts) {
+                        if (seenPackages.contains(pkgName)) continue
+                        seenPackages.add(pkgName)
+                    }
 
-                val pinIndex = pinnedIds.indexOf(uniqueId)
-                val isPinned = pinIndex != -1
+                    val activityName = activityInfo.name ?: ""
+                    val label = try {
+                        resolveInfo.loadLabel(packageManager).toString().trim()
+                    } catch (e: Exception) {
+                        pkgName
+                    }
 
-                apps.add(
-                    AppItem(
-                        id = uniqueId,
-                        packageName = pkgName,
-                        activityName = activityName,
-                        label = label,
-                        category = category,
-                        categoryId = category.name,
-                        categoryTitle = category.title,
-                        monogram = monogram,
-                        isPinned = isPinned,
-                        pinIndex = pinIndex
+                    val category = categorizeApp(resolveInfo, label, pkgName)
+                    val monogram = generateMonogram(label, pkgName)
+                    val uniqueId = if (activityName.isNotBlank()) "$pkgName/$activityName" else "$pkgName#$label"
+
+                    if (seenIds.contains(uniqueId)) continue
+                    seenIds.add(uniqueId)
+
+                    val pinIndex = pinnedIds.indexOf(uniqueId)
+                    val isPinned = pinIndex != -1
+
+                    apps.add(
+                        AppItem(
+                            id = uniqueId,
+                            packageName = pkgName,
+                            activityName = activityName,
+                            label = label,
+                            category = category,
+                            categoryId = category.name,
+                            categoryTitle = category.title,
+                            monogram = monogram,
+                            isPinned = isPinned,
+                            pinIndex = pinIndex,
+                            isDualApp = false
+                        )
                     )
-                )
+                }
             }
 
             // Fallback for minimal/test environments where no launcher activities are returned

@@ -24,7 +24,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import com.freelauncher.app.ui.util.LauncherHaptics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -48,8 +50,11 @@ fun TransparentWallpaperSheet(
     onWallpaperDimChange: (Float) -> Unit,
     onOpenCreator: () -> Unit,
     onDeleteTheme: (String) -> Unit,
+    isProUnlocked: Boolean = false,
+    onOpenProSheet: () -> Unit = {},
     onDismiss: () -> Unit
 ) {
+    val context = LocalContext.current
     var previewWallpaperId by remember { mutableStateOf(currentWallpaperId) }
     var previewDim by remember { mutableFloatStateOf(wallpaperDim) }
 
@@ -193,9 +198,15 @@ fun TransparentWallpaperSheet(
 
                         IconButton(
                             onClick = {
-                                onSelectWallpaper(previewWallpaperId)
-                                onWallpaperDimChange(previewDim)
-                                onDismiss()
+                                val isCustomOrTheme = previewWallpaperId == "custom_gallery" || previewWallpaperId.startsWith("custom_theme_")
+                                if (!isProUnlocked && isCustomOrTheme) {
+                                    LauncherHaptics.playClick(context)
+                                    onOpenProSheet()
+                                } else {
+                                    onSelectWallpaper(previewWallpaperId)
+                                    onWallpaperDimChange(previewDim)
+                                    onDismiss()
+                                }
                             },
                             modifier = Modifier
                                 .size(40.dp)
@@ -226,7 +237,14 @@ fun TransparentWallpaperSheet(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .clip(RoundedCornerShape(20.dp))
-                                    .clickable { onOpenCreator() },
+                                    .clickable {
+                                        if (!isProUnlocked) {
+                                            LauncherHaptics.playClick(context)
+                                            onOpenProSheet()
+                                        } else {
+                                            onOpenCreator()
+                                        }
+                                    },
                                 shape = RoundedCornerShape(20.dp),
                                 color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f)
                             ) {
@@ -241,11 +259,29 @@ fun TransparentWallpaperSheet(
                                         tint = MaterialTheme.colorScheme.onPrimaryContainer
                                     )
                                     Column {
-                                        Text(
-                                            text = "Atmosphere Creator",
-                                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                                            color = MaterialTheme.colorScheme.onPrimaryContainer
-                                        )
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                        ) {
+                                            Text(
+                                                text = "Atmosphere Creator",
+                                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                                                color = MaterialTheme.colorScheme.onPrimaryContainer
+                                            )
+                                            if (!isProUnlocked) {
+                                                Surface(
+                                                    shape = RoundedCornerShape(4.dp),
+                                                    color = MaterialTheme.colorScheme.primary
+                                                ) {
+                                                    Text(
+                                                        text = "PRO",
+                                                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.ExtraBold, fontSize = 8.sp),
+                                                        color = MaterialTheme.colorScheme.onPrimary,
+                                                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                                                    )
+                                                }
+                                            }
+                                        }
                                         Text(
                                             text = "Design your own personalized gradient",
                                             style = MaterialTheme.typography.bodySmall,
@@ -268,7 +304,10 @@ fun TransparentWallpaperSheet(
                                         shape = RoundedCornerShape(20.dp)
                                     )
                                     .clickable {
-                                        if (customWallpaperUri != null) {
+                                        if (!isProUnlocked) {
+                                            LauncherHaptics.playClick(context)
+                                            onOpenProSheet()
+                                        } else if (customWallpaperUri != null) {
                                             previewWallpaperId = "custom_gallery"
                                             onSelectWallpaper("custom_gallery")
                                         } else {
@@ -350,7 +389,7 @@ fun TransparentWallpaperSheet(
                                     Column(modifier = Modifier.weight(1f)) {
                                         Row(
                                             verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
                                         ) {
                                             Text(
                                                 text = if (customWallpaperUri != null) "Personal Gallery Photo" else "Select from Phone Gallery",
@@ -360,7 +399,19 @@ fun TransparentWallpaperSheet(
                                                 ),
                                                 color = MaterialTheme.colorScheme.onSurface
                                             )
-                                            if (isCustomActive) {
+                                            if (!isProUnlocked) {
+                                                Surface(
+                                                    shape = RoundedCornerShape(4.dp),
+                                                    color = MaterialTheme.colorScheme.primary
+                                                ) {
+                                                    Text(
+                                                        text = "PRO",
+                                                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.ExtraBold, fontSize = 8.sp),
+                                                        color = MaterialTheme.colorScheme.onPrimary,
+                                                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                                                    )
+                                                }
+                                            } else if (isCustomActive) {
                                                 Surface(
                                                     shape = RoundedCornerShape(6.dp),
                                                     color = MaterialTheme.colorScheme.primary
@@ -391,7 +442,14 @@ fun TransparentWallpaperSheet(
                                             verticalAlignment = Alignment.CenterVertically
                                         ) {
                                             FilledTonalButton(
-                                                onClick = { galleryLauncher.launch("image/*") },
+                                                onClick = {
+                                                    if (!isProUnlocked) {
+                                                        LauncherHaptics.playClick(context)
+                                                        onOpenProSheet()
+                                                    } else {
+                                                        galleryLauncher.launch("image/*")
+                                                    }
+                                                },
                                                 shape = RoundedCornerShape(10.dp),
                                                 contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
                                                 modifier = Modifier.height(34.dp)
@@ -461,8 +519,13 @@ fun TransparentWallpaperSheet(
                                             shape = RoundedCornerShape(18.dp)
                                         )
                                         .clickable {
-                                            previewWallpaperId = wallpaper.id
-                                            onSelectWallpaper(wallpaper.id)
+                                            if (!isProUnlocked) {
+                                                LauncherHaptics.playClick(context)
+                                                onOpenProSheet()
+                                            } else {
+                                                previewWallpaperId = wallpaper.id
+                                                onSelectWallpaper(wallpaper.id)
+                                            }
                                         },
                                     shape = RoundedCornerShape(18.dp),
                                     color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f)
