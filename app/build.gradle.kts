@@ -7,6 +7,7 @@ plugins {
   alias(libs.plugins.roborazzi)
   alias(libs.plugins.secrets)
   alias(libs.plugins.google.services)
+  alias(libs.plugins.firebase.crashlytics)
 }
 
 android {
@@ -17,8 +18,8 @@ android {
     applicationId = "com.freelauncher.app"
     minSdk = 24
     targetSdk = 37
-    versionCode = 20
-    versionName = "2.8"
+    versionCode = 22
+    versionName = "3.0"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }
@@ -119,7 +120,12 @@ dependencies {
   implementation(libs.moshi.kotlin)
   implementation(libs.okhttp)
   implementation(libs.retrofit)
-  implementation(libs.timber)
+  implementation(libs.firebase.crashlytics)
+  implementation(libs.firebase.analytics)
+  implementation(libs.playAppUpdate)
+  implementation(libs.playAppUpdateKtx)
+  implementation(libs.play.services.location)
+  implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.10.2")
   testImplementation(libs.androidx.core)
   testImplementation(libs.junit)
   testImplementation(libs.kotlinx.coroutines.test)

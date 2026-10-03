@@ -33,6 +33,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -79,6 +80,10 @@ fun SettingsSheet(
     onSixAppsScaleChanged: (Float) -> Unit = {},
     onNewsFeedToggled: (Boolean) -> Unit = {},
     onTimeAwayToggled: (Boolean) -> Unit = {},
+    enableSwipeDownSearch: Boolean = false,
+    onSwipeDownSearchToggled: (Boolean) -> Unit = {},
+    enableMindfulPause: Boolean = false,
+    onMindfulPauseToggled: (Boolean) -> Unit = {},
     onWeatherBatteryGlanceToggled: (Boolean) -> Unit = {},
     onTemperatureUnitChanged: (String) -> Unit = {},
     onGreetingChanged: (String) -> Unit,
@@ -1100,6 +1105,131 @@ fun SettingsSheet(
                             )
                         }
 
+                        // Added: Mindful Pause Toggle
+                        HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.outline.copy(alpha = 0.25f))
+
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    LauncherHaptics.playClick(context)
+                                    onMindfulPauseToggled(!enableMindfulPause)
+                                }
+                                .padding(16.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(36.dp)
+                                        .clip(CircleShape)
+                                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Outlined.SelfImprovement,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
+                                Column(modifier = Modifier.padding(end = 12.dp)) {
+                                    Text(
+                                        text = "Mindful Pause for Distracting Apps",
+                                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Medium),
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                    Spacer(modifier = Modifier.height(2.dp))
+                                    Text(
+                                        text = "Forces a 5-second breathing pause before launching social or gaming apps",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.secondary
+                                    )
+                                }
+                            }
+                            Switch(
+                                checked = enableMindfulPause,
+                                onCheckedChange = {
+                                    LauncherHaptics.playClick(context)
+                                    onMindfulPauseToggled(it)
+                                },
+                                modifier = Modifier.testTag("mindful_pause_toggle"),
+                                colors = SwitchDefaults.colors(
+                                    checkedThumbColor = MaterialTheme.colorScheme.onPrimary,
+                                    checkedTrackColor = MaterialTheme.colorScheme.primary,
+                                    uncheckedThumbColor = MaterialTheme.colorScheme.outline,
+                                    uncheckedTrackColor = MaterialTheme.colorScheme.surfaceVariant
+                                )
+                            )
+                        }
+
+                        HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.outline.copy(alpha = 0.25f))
+
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    LauncherHaptics.playClick(context)
+                                    onSwipeDownSearchToggled(!enableSwipeDownSearch)
+                                }
+                                .padding(16.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(36.dp)
+                                        .clip(CircleShape)
+                                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Outlined.Search,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
+                                Column(modifier = Modifier.padding(end = 12.dp)) {
+                                    Text(
+                                        text = "Swipe Down to Search",
+                                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Medium),
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                    Spacer(modifier = Modifier.height(2.dp))
+                                    Text(
+                                        text = "Swipe down on home screen to open universal search immediately",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.secondary
+                                    )
+                                }
+                            }
+                            Switch(
+                                checked = enableSwipeDownSearch,
+                                onCheckedChange = {
+                                    LauncherHaptics.playClick(context)
+                                    onSwipeDownSearchToggled(it)
+                                },
+                                modifier = Modifier.testTag("swipe_down_search_toggle"),
+                                colors = SwitchDefaults.colors(
+                                    checkedThumbColor = MaterialTheme.colorScheme.onPrimary,
+                                    checkedTrackColor = MaterialTheme.colorScheme.primary,
+                                    uncheckedThumbColor = MaterialTheme.colorScheme.outline,
+                                    uncheckedTrackColor = MaterialTheme.colorScheme.surfaceVariant
+                                )
+                            )
+                        }
+
                         if (isBiometricLockEnabled) {
                             HorizontalDivider(
                                 color = MaterialTheme.colorScheme.outline.copy(alpha = 0.15f),
@@ -1449,7 +1579,7 @@ fun SettingsSheet(
                                             color = MaterialTheme.colorScheme.onSurface
                                         )
                                         Text(
-                                            text = "Open system settings to select noma",
+                                            text = "Open system settings to select .noma",
                                             style = MaterialTheme.typography.bodySmall,
                                             color = MaterialTheme.colorScheme.secondary
                                         )
@@ -1635,7 +1765,7 @@ fun SettingsSheet(
                                     }
                                     Column {
                                         Text(
-                                            text = "About noma & Support",
+                                            text = "About .noma & Support",
                                             style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Medium),
                                             color = MaterialTheme.colorScheme.onSurface
                                         )
@@ -1648,7 +1778,7 @@ fun SettingsSheet(
                                 }
                                 Icon(
                                     imageVector = Icons.Outlined.ChevronRight,
-                                    contentDescription = "About noma",
+                                    contentDescription = "About .noma",
                                     tint = MaterialTheme.colorScheme.secondary,
                                     modifier = Modifier.size(22.dp)
                                 )
@@ -1663,20 +1793,22 @@ fun SettingsSheet(
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(top = 12.dp),
+                        .padding(top = 12.dp, bottom = 16.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    Text(
-                        text = "NOMA",
-                        style = MaterialTheme.typography.labelMedium.copy(
-                            fontWeight = FontWeight.Bold,
-                            letterSpacing = 2.sp
-                        ),
-                        color = MaterialTheme.colorScheme.secondary
+                    AndroidView(
+                        factory = { ctx ->
+                            android.widget.ImageView(ctx).apply {
+                                setImageDrawable(ctx.packageManager.getApplicationIcon(ctx.packageName))
+                            }
+                        },
+                        modifier = Modifier
+                            .size(48.dp)
+                            .clip(RoundedCornerShape(12.dp))
                     )
-                    Spacer(modifier = Modifier.height(4.dp))
+                    Spacer(modifier = Modifier.height(8.dp))
                     Text(
-                        text = "Version ${com.freelauncher.app.BuildConfig.VERSION_NAME} • Digital Wellness & Focus",
+                        text = "Version ${com.freelauncher.app.BuildConfig.VERSION_NAME} • Empty by default, intelligent when needed",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.secondary.copy(alpha = 0.7f)
                     )

@@ -4,7 +4,7 @@ import android.accessibilityservice.AccessibilityService
 import android.content.Context
 import android.os.Build
 import android.view.accessibility.AccessibilityEvent
-import timber.log.Timber
+import android.util.Log
 
 class NomaAccessibilityService : AccessibilityService() {
 
@@ -17,7 +17,7 @@ class NomaAccessibilityService : AccessibilityService() {
     override fun onServiceConnected() {
         super.onServiceConnected()
         instance = this
-        Timber.d("NomaAccessibilityService connected")
+        Log.d("NomaAccessibility", "NomaAccessibilityService connected")
     }
 
     override fun onDestroy() {

@@ -64,7 +64,6 @@ import com.freelauncher.app.data.service.SettingSearchResult
 import com.freelauncher.app.data.service.UniversalSearchManager
 import com.freelauncher.app.ui.util.DateTimeUtils
 import com.freelauncher.app.ui.util.LauncherHaptics
-import timber.log.Timber
 import com.freelauncher.app.ui.util.TrackScrollHaptics
 import com.freelauncher.app.ui.viewmodel.LauncherScreen
 import com.freelauncher.app.ui.viewmodel.LauncherUiState
@@ -128,7 +127,7 @@ fun AllAppsScreen(
 
     // 1. Filtered and Sorted Apps
     val matchingApps = remember(state.installedApps, state.searchQuery, selectedCategoryFilterId) {
-        val list = if (selectedCategoryFilterId != null) {
+        val list = if (selectedCategoryFilterId != null && state.searchQuery.isBlank()) {
             state.installedApps.filter { 
                 it.categoryId == selectedCategoryFilterId || 
                 (it.category.name == selectedCategoryFilterId && it.categoryId.isBlank()) 
@@ -509,7 +508,7 @@ fun AllAppsScreen(
                                             flags = Intent.FLAG_ACTIVITY_NEW_TASK
                                         })
                                     } catch (e2: Exception) {
-                                        Timber.e(e2)
+                                        android.util.Log.e("AllAppsScreen", "Failed to open settings", e2)
                                     }
                                 }
                             }
@@ -541,7 +540,7 @@ fun AllAppsScreen(
                                         }
                                         context.startActivity(callIntent)
                                     } catch (e: Exception) {
-                                        Timber.e(e)
+                                        android.util.Log.e("AllAppsScreen", "Failed to call", e)
                                     }
                                 },
                                 onMessage = {
@@ -552,7 +551,7 @@ fun AllAppsScreen(
                                         }
                                         context.startActivity(smsIntent)
                                     } catch (e: Exception) {
-                                        Timber.e(e)
+                                        android.util.Log.e("AllAppsScreen", "Failed to call", e)
                                     }
                                 },
                                 onWhatsApp = {
@@ -564,7 +563,7 @@ fun AllAppsScreen(
                                         }
                                         context.startActivity(whatsappIntent)
                                     } catch (e: Exception) {
-                                        Timber.e(e)
+                                        android.util.Log.e("AllAppsScreen", "Failed to call", e)
                                     }
                                 }
                             )
@@ -582,7 +581,7 @@ fun AllAppsScreen(
                                         }
                                         context.startActivity(callIntent)
                                     } catch (e: Exception) {
-                                        Timber.e(e)
+                                        android.util.Log.e("AllAppsScreen", "Failed to call", e)
                                     }
                                 },
                                 onWhatsApp = {
@@ -594,7 +593,7 @@ fun AllAppsScreen(
                                         }
                                         context.startActivity(whatsappIntent)
                                     } catch (e: Exception) {
-                                        Timber.e(e)
+                                        android.util.Log.e("AllAppsScreen", "Failed to call", e)
                                     }
                                 }
                             )
@@ -662,7 +661,7 @@ fun AllAppsScreen(
                                 }
                                 context.startActivity(smsIntent)
                             } catch (e: Exception) {
-                                Timber.e(e)
+                                android.util.Log.e("AllAppsScreen", "Failed to send SMS", e)
                             }
                         }
                     )
@@ -683,7 +682,7 @@ fun AllAppsScreen(
                                     }
                                     context.startActivity(smsIntent)
                                 } catch (e: Exception) {
-                                Timber.e(e)
+                                android.util.Log.e("AllAppsScreen", "Failed to open message", e)
                             }
                             }
                         )
@@ -755,7 +754,7 @@ fun AllAppsScreen(
                                         }
                                         context.startActivity(browserIntent)
                                     } catch (e2: Exception) {
-                                        Timber.e(e2)
+                                        android.util.Log.e("AllAppsScreen", "Failed to open settings", e2)
                                     }
                                 }
                             }
@@ -807,7 +806,7 @@ fun AllAppsScreen(
                                     try {
                                         context.startActivity(UniversalSearchManager.getYouTubeWebSearchIntent(state.searchQuery))
                                     } catch (e2: Exception) {
-                                        Timber.e(e2)
+                                        android.util.Log.e("AllAppsScreen", "Failed to open settings", e2)
                                     }
                                 }
                             }

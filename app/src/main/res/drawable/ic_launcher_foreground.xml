@@ -14,12 +14,17 @@
           android:fillColor="#000000"
           android:pathData="M0,0h108v108h-108z" />
 
-      <!-- Centered & Safely Scaled "noma" Brand Artwork -->
+      <!-- Centered & Safely Scaled ".noma" Brand Artwork -->
       <group
           android:scaleX="0.75"
           android:scaleY="0.75"
           android:pivotX="54"
           android:pivotY="54">
+
+          <!-- Leading Dot '.' -->
+          <path
+              android:fillColor="#FFFFFF"
+              android:pathData="M 8.8,56.6 A 3.2,3.2 0 1,1 8.8,63 A 3.2,3.2 0 1,1 8.8,56.6 Z" />
 
           <!-- Lowercase 'n' -->
           <path

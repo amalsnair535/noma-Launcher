@@ -1,9 +1,5 @@
-- [/] Time Away Screen Implementation
-    - [ ] Update `DigitalWellbeingService.kt` with Phone-Free logic
-    - [ ] Update `LauncherViewModel.kt` (State and Navigation enum)
-    - [ ] Create `TimeAwayScreen.kt`
-    - [ ] Implement right-swipe navigation in `HomeScreen.kt` & `SixAppsView.kt`
-    - [ ] Add transition animations in `MainActivity.kt`
-- [ ] Verification
-    - [ ] Run build
-    - [ ] Test gestures and real-time data
+- `[x]` Add Google Play In-App Updates dependencies to version catalog and app build file
+- `[x]` Create `UpdateManager.kt` to handle Play Store update checks
+- `[x]` Add update check methods and state to `LauncherViewModel.kt`
+- `[x]` Add "Check for Updates" button to `AboutSheet.kt` and wire up in `MainActivity.kt`
+- `[x]` Verify build and run tests successfully

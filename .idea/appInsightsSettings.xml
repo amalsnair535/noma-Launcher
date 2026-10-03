@@ -17,10 +17,10 @@
             <InsightsFilterSettings>
               <option name="connection">
                 <ConnectionSetting>
-                  <option name="appId" value="PLACEHOLDER" />
-                  <option name="mobileSdkAppId" value="" />
-                  <option name="projectId" value="" />
-                  <option name="projectNumber" value="" />
+                  <option name="appId" value="com.freelauncher.app" />
+                  <option name="mobileSdkAppId" value="1:424682867608:android:e36796053ce26f3d8179ed" />
+                  <option name="projectId" value="noma-launcher" />
+                  <option name="projectNumber" value="424682867608" />
                 </ConnectionSetting>
               </option>
               <option name="signal" value="SIGNAL_UNSPECIFIED" />

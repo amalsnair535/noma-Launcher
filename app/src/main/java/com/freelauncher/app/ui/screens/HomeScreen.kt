@@ -154,6 +154,9 @@ fun HomeScreen(
                                 if (totalDragY < -threshold) {
                                     // Swiped Up -> Six Apps screen
                                     onNavigate(LauncherScreen.SIX_APPS)
+                                } else if (totalDragY > threshold && state.enableSwipeDownSearch) {
+                                    // Swiped Down -> Search
+                                    onOpenSearch()
                                 }
                             }
                         }

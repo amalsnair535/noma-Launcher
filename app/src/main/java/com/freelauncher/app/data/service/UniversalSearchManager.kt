@@ -7,7 +7,7 @@ import android.net.Uri
 import android.provider.ContactsContract
 import android.provider.Settings
 import androidx.core.content.ContextCompat
-import timber.log.Timber
+import com.google.firebase.crashlytics.FirebaseCrashlytics
 import java.util.Locale
 
 data class SettingSearchResult(
@@ -194,7 +194,7 @@ object UniversalSearchManager {
                 }
             }
         } catch (e: Exception) {
-            Timber.e(e)
+            FirebaseCrashlytics.getInstance().recordException(e)
         }
 
         return results
@@ -247,7 +247,7 @@ object UniversalSearchManager {
                 }
             }
         } catch (e: Exception) {
-            Timber.e(e)
+            FirebaseCrashlytics.getInstance().recordException(e)
         }
 
         return results

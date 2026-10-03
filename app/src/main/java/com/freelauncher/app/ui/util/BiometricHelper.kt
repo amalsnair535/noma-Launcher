@@ -1,7 +1,7 @@
 package com.freelauncher.app.ui.util
 
 import android.content.Context
-import timber.log.Timber
+import com.google.firebase.crashlytics.FirebaseCrashlytics
 import androidx.biometric.BiometricManager
 import androidx.biometric.BiometricPrompt
 import androidx.core.content.ContextCompat
@@ -68,7 +68,7 @@ object BiometricHelper {
         try {
             biometricPrompt.authenticate(promptInfo)
         } catch (e: Exception) {
-            Timber.e(e)
+            FirebaseCrashlytics.getInstance().recordException(e)
             onError(e.message ?: "Authentication error")
         }
     }

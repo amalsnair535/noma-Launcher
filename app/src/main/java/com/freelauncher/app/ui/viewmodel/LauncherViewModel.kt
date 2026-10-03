@@ -23,7 +23,7 @@ import com.freelauncher.app.ui.components.TimeCardHorizontalAlign
 import com.freelauncher.app.ui.theme.LauncherFont
 import com.freelauncher.app.ui.theme.LauncherThemeMode
 import com.freelauncher.app.ui.theme.LauncherWallpaper
-import timber.log.Timber
+import com.google.firebase.crashlytics.FirebaseCrashlytics
 import androidx.core.net.toUri
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -107,6 +107,9 @@ data class LauncherUiState(
     val showWeatherBatteryGlance: Boolean = false,
     val temperatureUnit: String = "F",
     val enableDoubleTapToSleep: Boolean = false,
+    val enableSwipeDownSearch: Boolean = false,
+    val enableMindfulPause: Boolean = false,
+    val appPendingMindfulPause: AppItem? = null,
     val sixAppsScale: Float = 0.9f,
     val batteryLevel: Int = 100,
     val isBatteryCharging: Boolean = false,
@@ -123,7 +126,7 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     private val _currentTime = MutableStateFlow(Date())
     val currentTime: StateFlow<Date> = _currentTime.asStateFlow()
 
-    private val weatherService = com.freelauncher.app.data.service.WeatherService()
+    private val weatherService = com.freelauncher.app.data.service.WeatherService(application)
 
     init {
         startTimeTicker()
@@ -168,6 +171,8 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
                 val showWeatherGlance = settingsMap["show_weather_battery_glance"] == "true"
                 val tempUnit = settingsMap["temperature_unit"] ?: "F"
                 val doubleTapToSleep = settingsMap["enable_double_tap_to_sleep"] == "true"
+                val enableSwipeDownSearch = settingsMap["enable_swipe_down_search"] == "true"
+                val enableMindfulPause = settingsMap["enable_mindful_pause"] == "true"
                 val sixAppsScale = settingsMap["six_apps_scale"]?.toFloatOrNull() ?: 0.9f
                 val lockMethod = settingsMap["lock_method"] ?: "pin"
                 val customPin = settingsMap["custom_launcher_pin"] ?: ""
@@ -198,6 +203,8 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
                         showWeatherBatteryGlance = showWeatherGlance,
                         temperatureUnit = tempUnit,
                         enableDoubleTapToSleep = doubleTapToSleep,
+                        enableSwipeDownSearch = enableSwipeDownSearch,
+                        enableMindfulPause = enableMindfulPause,
                         sixAppsScale = sixAppsScale.coerceIn(0.6f, 1.8f),
                         isProUnlocked = isProUnlocked,
                     )
@@ -492,6 +499,33 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     }
 
     fun launchApp(context: Context, app: AppItem) {
+        if (_uiState.value.enableMindfulPause && isDistractingApp(app)) {
+            _uiState.update { it.copy(appPendingMindfulPause = app) }
+            return
+        }
+        executeAppLaunch(context, app)
+    }
+
+    fun confirmMindfulPause(context: Context) {
+        val app = _uiState.value.appPendingMindfulPause
+        _uiState.update { it.copy(appPendingMindfulPause = null) }
+        if (app != null) {
+            executeAppLaunch(context, app)
+        }
+    }
+
+    fun cancelMindfulPause() {
+        _uiState.update { it.copy(appPendingMindfulPause = null) }
+    }
+
+    private fun isDistractingApp(app: AppItem): Boolean {
+        val catId = app.categoryId.uppercase()
+        val catName = app.category.name.uppercase()
+        val isDistractingCategory = listOf("SOCIAL", "GAMES", "MEDIA", "ENTERTAINMENT", "SHOPPING")
+        return isDistractingCategory.contains(catId) || isDistractingCategory.contains(catName)
+    }
+
+    private fun executeAppLaunch(context: Context, app: AppItem) {
         try {
             val launcherApps = context.getSystemService(Context.LAUNCHER_APPS_SERVICE) as? android.content.pm.LauncherApps
             val userManager = context.getSystemService(Context.USER_SERVICE) as? android.os.UserManager
@@ -540,7 +574,7 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
                 android.widget.Toast.makeText(context, "${app.label} is not installed", android.widget.Toast.LENGTH_SHORT).show()
             }
         } catch (e: Exception) {
-            Timber.e(e)
+            FirebaseCrashlytics.getInstance().recordException(e)
             android.widget.Toast.makeText(context, "Could not open ${app.label}", android.widget.Toast.LENGTH_SHORT).show()
         }
     }
@@ -593,7 +627,8 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
             }
             context.startActivity(intent)
         } catch (e: Exception) {
-            Timber.e("Error opening web URL: %s", e.message)
+            android.util.Log.e("LauncherVM", "Error opening web URL: %s", e)
+            FirebaseCrashlytics.getInstance().recordException(e)
         }
     }
 
@@ -869,7 +904,7 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
                 repository.updateSetting("wallpaper_id", "custom_gallery")
                 repository.updateSetting("custom_wallpaper_uri", savedPath)
             } catch (e: Exception) {
-                Timber.e(e)
+                FirebaseCrashlytics.getInstance().recordException(e)
             }
         }
     }
@@ -1099,6 +1134,27 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
+    fun setSwipeDownSearchEnabled(enabled: Boolean) {
+        _uiState.update { it.copy(enableSwipeDownSearch = enabled) }
+        viewModelScope.launch {
+            repository.updateSetting("enable_swipe_down_search", enabled.toString())
+        }
+    }
+
+    fun setMindfulPauseEnabled(enabled: Boolean) {
+        _uiState.update { it.copy(enableMindfulPause = enabled) }
+        viewModelScope.launch {
+            repository.updateSetting("enable_mindful_pause", enabled.toString())
+        }
+    }
+
+    fun checkForUpdates(context: android.content.Context) {
+        val updateManager = com.freelauncher.app.data.service.UpdateManager(context)
+        updateManager.checkForUpdate {
+            android.widget.Toast.makeText(context, "A new update is available on the Play Store!", android.widget.Toast.LENGTH_LONG).show()
+        }
+    }
+
     fun setSixAppsScale(scale: Float) {
         val clampedScale = scale.coerceIn(0.6f, 1.8f)
         _uiState.update { it.copy(sixAppsScale = clampedScale) }
@@ -1119,7 +1175,7 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
 
         android.widget.Toast.makeText(
             context,
-            "Enable 'noma' in Accessibility Settings to lock screen on double-tap",
+            "Enable '.noma' in Accessibility Settings to lock screen on double-tap",
             android.widget.Toast.LENGTH_LONG
         ).show()
 
@@ -1129,7 +1185,7 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
             }
             context.startActivity(intent)
         } catch (e: Exception) {
-            Timber.e(e)
+            FirebaseCrashlytics.getInstance().recordException(e)
         }
     }
 
@@ -1145,7 +1201,7 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
             )
             batteryStatus?.let { updateBatteryState(it) }
         } catch (e: Exception) {
-            Timber.e(e)
+            FirebaseCrashlytics.getInstance().recordException(e)
         }
 
         viewModelScope.launch {

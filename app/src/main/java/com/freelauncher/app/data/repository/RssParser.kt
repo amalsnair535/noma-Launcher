@@ -9,7 +9,7 @@ import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.xmlpull.v1.XmlPullParser
-import timber.log.Timber
+import com.google.firebase.crashlytics.FirebaseCrashlytics
 import java.io.StringReader
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -45,7 +45,7 @@ class RssParser {
 
             return@withContext parseXml(xmlContent, feed)
         } catch (e: Exception) {
-            Timber.e(e)
+            FirebaseCrashlytics.getInstance().recordException(e)
             return@withContext emptyList()
         }
     }
@@ -120,7 +120,7 @@ class RssParser {
                 eventType = parser.next()
             }
         } catch (e: Exception) {
-            Timber.e(e)
+            FirebaseCrashlytics.getInstance().recordException(e)
         }
 
         // Deduplicate within the same feed by normalized title and link

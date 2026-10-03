@@ -95,7 +95,7 @@ fun NomaProSheet(
                             }
                         }
                         Text(
-                            text = "noma Pro",
+                            text = ".noma Pro",
                             style = MaterialTheme.typography.titleLarge.copy(
                                 fontWeight = FontWeight.Bold,
                                 letterSpacing = (-0.5).sp
@@ -231,7 +231,7 @@ fun NomaProSheet(
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
-                            text = "Unlock noma Pro",
+                            text = "Unlock .noma Pro",
                             style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
                         )
                     }

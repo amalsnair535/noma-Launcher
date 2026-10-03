@@ -26,12 +26,15 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.freelauncher.app.BuildConfig
+import com.freelauncher.app.R
 import com.freelauncher.app.ui.util.LauncherHaptics
+import androidx.compose.ui.viewinterop.AndroidView
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AboutSheet(
     onOpenUrl: (String) -> Unit,
+    onCheckForUpdates: () -> Unit = {},
     onDismiss: () -> Unit
 ) {
     val context = LocalContext.current
@@ -120,14 +123,15 @@ fun AboutSheet(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    Text(
-                        text = "noma",
-                        style = MaterialTheme.typography.headlineLarge.copy(
-                            fontWeight = FontWeight.ExtraBold,
-                            letterSpacing = (-1).sp,
-                            fontSize = 36.sp
-                        ),
-                        color = MaterialTheme.colorScheme.onSurface
+                    AndroidView(
+                        factory = { ctx ->
+                            android.widget.ImageView(ctx).apply {
+                                setImageDrawable(ctx.packageManager.getApplicationIcon(ctx.packageName))
+                            }
+                        },
+                        modifier = Modifier
+                            .size(72.dp)
+                            .clip(RoundedCornerShape(18.dp))
                     )
                     Text(
                         text = "Version ${BuildConfig.VERSION_NAME}",
@@ -164,8 +168,20 @@ fun AboutSheet(
                 ) {
                     Column {
                         AboutActionItem(
+                            icon = Icons.Outlined.SystemUpdate,
+                            title = "Check for Updates",
+                            subtitle = "Check Google Play Store for a newer version",
+                            onClick = {
+                                LauncherHaptics.playClick(context)
+                                onCheckForUpdates()
+                            }
+                        )
+
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.15f))
+
+                        AboutActionItem(
                             icon = Icons.Outlined.Star,
-                            title = "Rate noma Launcher",
+                            title = "Rate .noma Launcher",
                             subtitle = "Support the development with a review",
                             onClick = {
                                 LauncherHaptics.playClick(context)
@@ -243,7 +259,7 @@ fun AboutSheet(
                             subtitle = "Tell us what's broken",
                             onClick = {
                                 LauncherHaptics.playClick(context)
-                                onOpenUrl("mailto:amalsnair535@gmail.com?subject=noma%20Bug%20Report")
+                                onOpenUrl("mailto:amalsnair535@gmail.com?subject=.noma%20Bug%20Report")
                             }
                         )
 
@@ -255,7 +271,7 @@ fun AboutSheet(
                             subtitle = "What should we build next?",
                             onClick = {
                                 LauncherHaptics.playClick(context)
-                                onOpenUrl("mailto:amalsnair535@gmail.com?subject=noma%20Feature%20Suggestion")
+                                onOpenUrl("mailto:amalsnair535@gmail.com?subject=.noma%20Feature%20Suggestion")
                             }
                         )
                     }

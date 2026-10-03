@@ -1,8 +1,11 @@
 package com.freelauncher.app
 
+import android.Manifest
+import android.content.pm.PackageManager
 import android.os.Bundle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.animation.*
 import androidx.compose.animation.core.FastOutSlowInEasing
@@ -15,11 +18,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.lifecycleScope
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.freelauncher.app.ui.components.*
@@ -30,10 +35,39 @@ import com.freelauncher.app.ui.util.BiometricHelper
 import com.freelauncher.app.ui.viewmodel.LauncherScreen
 import com.freelauncher.app.ui.viewmodel.LauncherViewModel
 import java.io.File
+import kotlinx.coroutines.launch
 
 class MainActivity : FragmentActivity() {
 
     private val viewModel: LauncherViewModel by viewModels()
+
+    private val locationPermissionLauncher =
+        registerForActivityResult(
+            ActivityResultContracts.RequestMultiplePermissions()
+        ) { _ ->
+            loadWeather()
+        }
+
+    fun requestLocationPermission() {
+        locationPermissionLauncher.launch(
+            arrayOf(
+                Manifest.permission.ACCESS_COARSE_LOCATION,
+                Manifest.permission.ACCESS_FINE_LOCATION
+            )
+        )
+    }
+
+    private fun loadWeather() {
+        lifecycleScope.launch {
+            val weatherService = com.freelauncher.app.data.service.WeatherService(applicationContext)
+            val weather = weatherService.fetchCurrentWeather()
+            if (weather != null) {
+                android.util.Log.d("MainActivity", "${weather.tempC}°C - ${weather.condition}")
+            } else {
+                android.util.Log.d("MainActivity", "Weather unavailable")
+            }
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -51,6 +85,16 @@ class MainActivity : FragmentActivity() {
             val state by viewModel.uiState.collectAsStateWithLifecycle()
             val currentTime by viewModel.currentTime.collectAsStateWithLifecycle()
             val context = LocalContext.current
+
+            LaunchedEffect(state.showWeatherBatteryGlance) {
+                if (state.showWeatherBatteryGlance) {
+                    val hasCoarse = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
+                    val hasFine = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
+                    if (!hasCoarse && !hasFine) {
+                        requestLocationPermission()
+                    }
+                }
+            }
 
             // Memoized event handlers to prevent unnecessary recompositions of sheets/screens
             val onNavigate = remember { { screen: LauncherScreen ->
@@ -356,6 +400,8 @@ class MainActivity : FragmentActivity() {
                             showTimeAway = state.showTimeAway,
                             showWeatherBatteryGlance = state.showWeatherBatteryGlance,
                             enableDoubleTapToSleep = state.enableDoubleTapToSleep,
+                            enableSwipeDownSearch = state.enableSwipeDownSearch,
+                            enableMindfulPause = state.enableMindfulPause,
                             sixAppsScale = state.sixAppsScale,
                             temperatureUnit = state.temperatureUnit,
                             currentGreeting = state.customGreeting,
@@ -370,6 +416,8 @@ class MainActivity : FragmentActivity() {
                             onMonogramsToggled = { viewModel.setShowMonograms(it) },
                             onGestureHintsToggled = { viewModel.setShowGestureHints(it) },
                             onDoubleTapToSleepToggled = { viewModel.setDoubleTapToSleepEnabled(it) },
+                            onSwipeDownSearchToggled = { viewModel.setSwipeDownSearchEnabled(it) },
+                            onMindfulPauseToggled = { viewModel.setMindfulPauseEnabled(it) },
                             onSixAppsScaleChanged = { viewModel.setSixAppsScale(it) },
                             onNewsFeedToggled = { viewModel.setShowNewsFeed(it) },
                             onTimeAwayToggled = { viewModel.setShowTimeAway(it) },
@@ -392,7 +440,17 @@ class MainActivity : FragmentActivity() {
                     if (state.showAboutSheet) {
                         AboutSheet(
                             onOpenUrl = { url -> viewModel.openWebUrl(this@MainActivity, url) },
+                            onCheckForUpdates = { viewModel.checkForUpdates(this@MainActivity) },
                             onDismiss = { viewModel.setAboutSheetVisible(false) }
+                        )
+                    }
+
+                    // Mindful Pause Dialog
+                    if (state.appPendingMindfulPause != null) {
+                        MindfulPauseDialog(
+                            app = state.appPendingMindfulPause!!,
+                            onContinue = { viewModel.confirmMindfulPause(this@MainActivity) },
+                            onCancel = { viewModel.cancelMindfulPause() }
                         )
                     }
 
