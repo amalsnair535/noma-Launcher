@@ -1,5 +1,6 @@
 package com.freelauncher.app.ui.viewmodel
 
+import android.app.Activity
 import android.app.Application
 import android.content.ContentUris
 import android.content.Context
@@ -114,6 +115,17 @@ data class LauncherUiState(
     val batteryLevel: Int = 100,
     val isBatteryCharging: Boolean = false,
     val weatherText: String? = null,
+    val enableLandscapeMode: Boolean = false,
+    val iconDisplayMode: com.freelauncher.app.data.models.IconDisplayMode = com.freelauncher.app.data.models.IconDisplayMode.TEXT_ONLY,
+    val selectedIconPackPackage: String = "",
+    val minimalIconPackConfig: com.freelauncher.app.data.models.MinimalIconPackConfig = com.freelauncher.app.data.models.MinimalIconPackConfig(),
+    val installedIconPacks: List<com.freelauncher.app.data.service.IconPackInfo> = emptyList(),
+    val showMinimalIconPackCreator: Boolean = false,
+    val showAccessibilityDisclosureDialog: Boolean = false,
+    val appDrawerStyle: com.freelauncher.app.data.models.AppDrawerStyle = com.freelauncher.app.data.models.AppDrawerStyle.CLASSIC,
+    val sixAppsAlignment: com.freelauncher.app.data.models.SixAppsAlignment = com.freelauncher.app.data.models.SixAppsAlignment.LEFT,
+    val allAppsAlignment: com.freelauncher.app.data.models.AllAppsAlignment = com.freelauncher.app.data.models.AllAppsAlignment.CENTER,
+    val hideEverythingOnHome: Boolean = false,
 )
 
 class LauncherViewModel(application: Application) : AndroidViewModel(application) {
@@ -127,6 +139,12 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     val currentTime: StateFlow<Date> = _currentTime.asStateFlow()
 
     private val weatherService = com.freelauncher.app.data.service.WeatherService(application)
+    val iconPackManager = com.freelauncher.app.data.service.IconPackManager(application)
+    val billingManager = com.freelauncher.app.data.service.BillingManager(application) { isUnlocked ->
+        if (isUnlocked) {
+            unlockProFeatures()
+        }
+    }
 
     init {
         startTimeTicker()
@@ -177,6 +195,16 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
                 val lockMethod = settingsMap["lock_method"] ?: "pin"
                 val customPin = settingsMap["custom_launcher_pin"] ?: ""
                 val isProUnlocked = settingsMap["is_pro_unlocked"] == "true"
+                val enableLandscapeMode = settingsMap["enable_landscape_mode"] == "true"
+
+                val iconDisplayMode = repository.getIconDisplayMode()
+                val selectedIconPackPackage = repository.getSelectedIconPack()
+                val minimalIconPackConfig = repository.getMinimalIconPackConfig()
+                val installedIconPacks = withContext(Dispatchers.IO) { iconPackManager.getInstalledIconPacks() }
+                val appDrawerStyle = repository.getAppDrawerStyle()
+                val sixAppsAlignment = repository.getSixAppsAlignment()
+                val allAppsAlignment = repository.getAllAppsAlignment()
+                val hideEverythingOnHome = repository.getHideEverythingOnHome()
 
                 _uiState.update { state ->
                     state.copy(
@@ -207,9 +235,25 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
                         enableMindfulPause = enableMindfulPause,
                         sixAppsScale = sixAppsScale.coerceIn(0.6f, 1.8f),
                         isProUnlocked = isProUnlocked,
+                        enableLandscapeMode = enableLandscapeMode,
+                        iconDisplayMode = iconDisplayMode,
+                        selectedIconPackPackage = selectedIconPackPackage,
+                        minimalIconPackConfig = minimalIconPackConfig,
+                        installedIconPacks = installedIconPacks,
+                        appDrawerStyle = appDrawerStyle,
+                        sixAppsAlignment = sixAppsAlignment,
+                        allAppsAlignment = allAppsAlignment,
+                        hideEverythingOnHome = hideEverythingOnHome,
                     )
                 }
             }
+        }
+    }
+
+    fun setLandscapeModeEnabled(enabled: Boolean) {
+        _uiState.update { it.copy(enableLandscapeMode = enabled) }
+        viewModelScope.launch {
+            repository.updateSetting("enable_landscape_mode", enabled.toString())
         }
     }
 
@@ -265,44 +309,56 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
+    private data class ProcessedAppsData(
+        val updatedApps: List<AppItem>,
+        val pinnedList: List<AppItem>,
+        val userCategories: List<com.freelauncher.app.data.models.AppCategoryInfo>,
+        val categorizedApps: Map<com.freelauncher.app.data.models.AppCategory, List<AppItem>>
+    )
+
     fun refreshApps() {
         viewModelScope.launch {
             val apps = repository.getInstalledApps()
             val pinnedIds = repository.getPinnedIds()
-            val installedIds = apps.asSequence().map { it.id }.toSet()
 
-            // Build the pinned apps matching the stored list (can be 0 to 6 apps freely)
-            val pinnedList = mutableListOf<AppItem>()
-            val validPinnedIds = mutableListOf<String>()
+            val processed = withContext(Dispatchers.Default) {
+                val installedIds = apps.asSequence().map { it.id }.toSet()
 
-            for (id in pinnedIds) {
-                if (pinnedList.size >= 6) break
-                val found = apps.find { it.id == id }
-                if ((found != null) && (!pinnedList.any { it.id == id })) {
-                    pinnedList.add(found.copy(isPinned = true, pinIndex = pinnedList.size))
-                    validPinnedIds.add(id)
+                val pinnedList = mutableListOf<AppItem>()
+                val validPinnedIds = mutableListOf<String>()
+
+                for (id in pinnedIds) {
+                    if (pinnedList.size >= 6) break
+                    val found = apps.find { it.id == id }
+                    if ((found != null) && (!pinnedList.any { it.id == id })) {
+                        pinnedList.add(found.copy(isPinned = true, pinIndex = pinnedList.size))
+                        validPinnedIds.add(id)
+                    }
                 }
+
+                // Sync sanitized valid ID list back to repository if there was any ghost app
+                if (pinnedIds.isNotEmpty() && (pinnedIds.size != validPinnedIds.size) && installedIds.isNotEmpty()) {
+                    repository.setPinnedIds(validPinnedIds)
+                }
+
+                val updatedApps = apps.map { app ->
+                    val pinIdx = validPinnedIds.indexOf(app.id)
+                    if (pinIdx != -1) app.copy(isPinned = true, pinIndex = pinIdx)
+                    else app.copy(isPinned = false, pinIndex = -1)
+                }
+
+                val userCategories = repository.getUserCategories()
+                val categorized = updatedApps.groupBy { it.category }
+
+                ProcessedAppsData(updatedApps, pinnedList, userCategories, categorized)
             }
 
-            // Sync sanitized valid ID list back to repository if there was any ghost app
-            if (pinnedIds.isNotEmpty() && (pinnedIds.size != validPinnedIds.size) && installedIds.isNotEmpty()) {
-                repository.setPinnedIds(validPinnedIds)
-            }
-
-            val updatedApps = apps.map { app ->
-                val pinIdx = validPinnedIds.indexOf(app.id)
-                if (pinIdx != -1) app.copy(isPinned = true, pinIndex = pinIdx)
-                else app.copy(isPinned = false, pinIndex = -1)
-            }
-
-            val userCategories = repository.getUserCategories()
-            val categorized = updatedApps.groupBy { it.category }
             _uiState.update {
                 it.copy(
-                    installedApps = updatedApps,
-                    pinnedApps = pinnedList,
-                    categories = userCategories,
-                    categorizedApps = categorized,
+                    installedApps = processed.updatedApps,
+                    pinnedApps = processed.pinnedList,
+                    categories = processed.userCategories,
+                    categorizedApps = processed.categorizedApps,
                 )
             }
         }
@@ -621,11 +677,25 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     }
 
     fun openWebUrl(context: Context, url: String) {
+        if (url.isBlank()) return
         try {
-            val intent = Intent(Intent.ACTION_VIEW, url.toUri()).apply {
+            val uri = Uri.parse(url.trim())
+            val scheme = uri.scheme?.lowercase(java.util.Locale.ROOT) ?: ""
+
+            // Strictly allow only safe web, store, and mail schemes
+            val allowedSchemes = setOf("https", "http", "market", "mailto")
+            if (scheme !in allowedSchemes) {
+                android.util.Log.w("LauncherVM", "Rejected launching URI with untrusted scheme: $scheme")
+                return
+            }
+
+            val intent = Intent(Intent.ACTION_VIEW, uri).apply {
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             }
             context.startActivity(intent)
+        } catch (e: android.content.ActivityNotFoundException) {
+            android.util.Log.w("LauncherVM", "No activity found to handle URI: $url")
+            android.widget.Toast.makeText(context, "No app available to handle link", android.widget.Toast.LENGTH_SHORT).show()
         } catch (e: Exception) {
             android.util.Log.e("LauncherVM", "Error opening web URL: %s", e)
             FirebaseCrashlytics.getInstance().recordException(e)
@@ -858,8 +928,12 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
 
     fun saveAtmosphericTheme(name: String, colors: List<Long>, isDark: Boolean) {
         viewModelScope.launch {
-            repository.saveCustomWallpaper(name, colors, isDark)
+            val newId = repository.saveCustomWallpaper(name, colors, isDark)
             setAtmosphericCreatorVisible(false)
+            setWallpaperPickerVisible(false)
+            if (newId > 0) {
+                setWallpaper("custom_theme_$newId")
+            }
         }
     }
 
@@ -910,12 +984,23 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     }
 
     fun removeCustomWallpaper() {
-        viewModelScope.launch {
-            _uiState.update {
-                it.copy(
-                    wallpaperId = "cyber_noir",
-                    customWallpaperUri = null,
-                )
+        val currentUri = _uiState.value.customWallpaperUri
+        viewModelScope.launch(Dispatchers.IO) {
+            if (!currentUri.isNullOrBlank()) {
+                try {
+                    val file = java.io.File(currentUri)
+                    if (file.exists() && file.name.startsWith("custom_wallpaper_")) {
+                        file.delete()
+                    }
+                } catch (_: Exception) {}
+            }
+            withContext(Dispatchers.Main) {
+                _uiState.update {
+                    it.copy(
+                        wallpaperId = "cyber_noir",
+                        customWallpaperUri = null,
+                    )
+                }
             }
             repository.updateSetting("wallpaper_id", "cyber_noir")
             repository.updateSetting("custom_wallpaper_uri", "")
@@ -1004,6 +1089,14 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         viewModelScope.launch {
             repository.updateSetting("is_pro_unlocked", "true")
         }
+    }
+
+    fun launchProPurchaseFlow(activity: Activity) {
+        billingManager.launchPurchaseFlow(activity)
+    }
+
+    fun restorePurchases() {
+        billingManager.queryPurchases()
     }
 
     fun openDefaultLauncherChooser(context: Context) {
@@ -1132,6 +1225,32 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         viewModelScope.launch {
             repository.updateSetting("enable_double_tap_to_sleep", enabled.toString())
         }
+        if (enabled && !com.freelauncher.app.data.service.NomaAccessibilityService.isEnabled()) {
+            _uiState.update { it.copy(showAccessibilityDisclosureDialog = true) }
+        }
+    }
+
+    fun setHideEverythingOnHome(hide: Boolean) {
+        _uiState.update { it.copy(hideEverythingOnHome = hide) }
+        viewModelScope.launch {
+            repository.saveHideEverythingOnHome(hide)
+        }
+    }
+
+    fun setAccessibilityDisclosureDialogVisible(visible: Boolean) {
+        _uiState.update { it.copy(showAccessibilityDisclosureDialog = visible) }
+    }
+
+    fun confirmAccessibilityDisclosure(context: Context) {
+        _uiState.update { it.copy(showAccessibilityDisclosureDialog = false) }
+        try {
+            val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            context.startActivity(intent)
+        } catch (e: Exception) {
+            FirebaseCrashlytics.getInstance().recordException(e)
+        }
     }
 
     fun setSwipeDownSearchEnabled(enabled: Boolean) {
@@ -1173,20 +1292,54 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
             return
         }
 
-        android.widget.Toast.makeText(
-            context,
-            "Enable '.noma' in Accessibility Settings to lock screen on double-tap",
-            android.widget.Toast.LENGTH_LONG
-        ).show()
+        // Service not yet connected -> Show in-app Prominent Disclosure dialog first
+        _uiState.update { it.copy(showAccessibilityDisclosureDialog = true) }
+    }
 
-        try {
-            val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).apply {
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            }
-            context.startActivity(intent)
-        } catch (e: Exception) {
-            FirebaseCrashlytics.getInstance().recordException(e)
+    fun setIconDisplayMode(mode: com.freelauncher.app.data.models.IconDisplayMode) {
+        _uiState.update { it.copy(iconDisplayMode = mode) }
+        viewModelScope.launch {
+            repository.saveIconDisplayMode(mode)
         }
+    }
+
+    fun setAppDrawerStyle(style: com.freelauncher.app.data.models.AppDrawerStyle) {
+        _uiState.update { it.copy(appDrawerStyle = style) }
+        viewModelScope.launch {
+            repository.saveAppDrawerStyle(style)
+        }
+    }
+
+    fun setSixAppsAlignment(alignment: com.freelauncher.app.data.models.SixAppsAlignment) {
+        _uiState.update { it.copy(sixAppsAlignment = alignment) }
+        viewModelScope.launch {
+            repository.saveSixAppsAlignment(alignment)
+        }
+    }
+
+    fun setAllAppsAlignment(alignment: com.freelauncher.app.data.models.AllAppsAlignment) {
+        _uiState.update { it.copy(allAppsAlignment = alignment) }
+        viewModelScope.launch {
+            repository.saveAllAppsAlignment(alignment)
+        }
+    }
+
+    fun setSelectedIconPack(packageName: String) {
+        _uiState.update { it.copy(selectedIconPackPackage = packageName) }
+        viewModelScope.launch {
+            repository.saveSelectedIconPack(packageName)
+        }
+    }
+
+    fun saveMinimalIconPackConfig(config: com.freelauncher.app.data.models.MinimalIconPackConfig) {
+        _uiState.update { it.copy(minimalIconPackConfig = config, showMinimalIconPackCreator = false) }
+        viewModelScope.launch {
+            repository.saveMinimalIconPackConfig(config)
+        }
+    }
+
+    fun setShowMinimalIconPackCreator(show: Boolean) {
+        _uiState.update { it.copy(showMinimalIconPackCreator = show) }
     }
 
     private fun startBatteryAndWeatherMonitoring() {

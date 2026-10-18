@@ -1,5 +1,9 @@
 package com.freelauncher.app.ui.components
 
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -11,9 +15,11 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ColorLens
+import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -23,43 +29,51 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
-
-data class AtmospherePreset(
-    val name: String,
-    val topColor: Color,
-    val middleColor: Color,
-    val bottomColor: Color,
-    val isDark: Boolean = true
-)
+import com.freelauncher.app.ui.util.ImageThemeExtractor
+import kotlinx.coroutines.launch
 
 @Composable
 fun AtmosphericThemeCreatorDialog(
     onSave: (String, List<Long>, Boolean) -> Unit,
     onDismiss: () -> Unit
 ) {
+    val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
+
     var themeName by remember { mutableStateOf("My Atmosphere") }
     var color1 by remember { mutableStateOf(Color(0xFF1E293B)) }
     var color2 by remember { mutableStateOf(Color(0xFF0F172A)) }
     var color3 by remember { mutableStateOf(Color(0xFF020617)) }
     var isDark by remember { mutableStateOf(true) }
 
-    val gradientPresets = remember {
-        listOf(
-            AtmospherePreset("Midnight Slate", Color(0xFF1E293B), Color(0xFF0F172A), Color(0xFF020617), true),
-            AtmospherePreset("Cyber Violet", Color(0xFF2E1065), Color(0xFF1E1B4B), Color(0xFF020617), true),
-            AtmospherePreset("Emerald Forest", Color(0xFF064E3B), Color(0xFF022C22), Color(0xFF000000), true),
-            AtmospherePreset("Oceanic Deep", Color(0xFF164E63), Color(0xFF083344), Color(0xFF020617), true),
-            AtmospherePreset("Sunset Gold", Color(0xFF451A03), Color(0xFF78350F), Color(0xFF0F172A), true),
-            AtmospherePreset("Deep Crimson", Color(0xFF4C0519), Color(0xFF881337), Color(0xFF000000), true),
-            AtmospherePreset("Nordic Slate", Color(0xFF334155), Color(0xFF1E293B), Color(0xFF0F172A), true),
-            AtmospherePreset("OLED Stealth", Color(0xFF0F0F0F), Color(0xFF050505), Color(0xFF000000), true),
-            AtmospherePreset("Pastel Dawn", Color(0xFFF1F5F9), Color(0xFFE2E8F0), Color(0xFFCBD5E1), false)
-        )
+    var isExtractingImage by remember { mutableStateOf(false) }
+    var extractedSwatches by remember { mutableStateOf<List<Color>>(emptyList()) }
+
+    // Photo Gallery Picker Launcher
+    val photoPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickVisualMedia()
+    ) { uri: Uri? ->
+        if (uri != null) {
+            isExtractingImage = true
+            coroutineScope.launch {
+                val palette = ImageThemeExtractor.extractPaletteFromUri(context, uri)
+                if (palette != null) {
+                    color1 = palette.topColor
+                    color2 = palette.middleColor
+                    color3 = palette.bottomColor
+                    isDark = palette.isDark
+                    extractedSwatches = palette.swatches
+                    themeName = "Photo Atmosphere"
+                }
+                isExtractingImage = false
+            }
+        }
     }
 
     val presetSwatches = remember {
@@ -69,6 +83,10 @@ fun AtmosphericThemeCreatorDialog(
             Color(0xFF451A03), Color(0xFF4C0519), Color(0xFF334155), Color(0xFF64748B),
             Color(0xFF94A3B8), Color(0xFFCBD5E1), Color(0xFFF1F5F9), Color(0xFFFFFFFF)
         )
+    }
+
+    val currentBrush = remember(color1, color2, color3) {
+        Brush.verticalGradient(listOf(color1, color2, color3))
     }
 
     Dialog(
@@ -96,10 +114,21 @@ fun AtmosphericThemeCreatorDialog(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text(
-                            text = "Create Atmosphere",
-                            style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold)
-                        )
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.AutoAwesome,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Text(
+                                text = "Atmosphere Creator",
+                                style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold)
+                            )
+                        }
                         IconButton(onClick = onDismiss) {
                             Icon(Icons.Default.Close, contentDescription = "Close")
                         }
@@ -111,9 +140,9 @@ fun AtmosphericThemeCreatorDialog(
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(100.dp)
+                            .height(110.dp)
                             .clip(RoundedCornerShape(16.dp))
-                            .background(Brush.verticalGradient(listOf(color1, color2, color3)))
+                            .background(currentBrush)
                             .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.25f), RoundedCornerShape(16.dp)),
                         contentAlignment = Alignment.Center
                     ) {
@@ -122,6 +151,106 @@ fun AtmosphericThemeCreatorDialog(
                             style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
                             color = if (isDark) Color.White.copy(alpha = 0.85f) else Color.Black.copy(alpha = 0.85f)
                         )
+                    }
+                }
+
+                // Photo Extractor Card
+                item(key = "photo_extractor_card") {
+                    Surface(
+                        onClick = {
+                            photoPickerLauncher.launch(
+                                PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                            )
+                        },
+                        shape = RoundedCornerShape(16.dp),
+                        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f),
+                        border = androidx.compose.foundation.BorderStroke(
+                            1.dp,
+                            MaterialTheme.colorScheme.primary.copy(alpha = 0.45f)
+                        ),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 14.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(14.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(42.dp)
+                                    .clip(CircleShape)
+                                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Image,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(22.dp)
+                                )
+                            }
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "Extract Theme from Photo",
+                                    style = MaterialTheme.typography.titleMedium.copy(
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 15.sp
+                                    ),
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                                Spacer(modifier = Modifier.height(2.dp))
+                                Text(
+                                    text = "Auto-generate gradient from any gallery photo",
+                                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.85f),
+                                    maxLines = 2
+                                )
+                            }
+                        }
+                    }
+                }
+
+                if (isExtractingImage) {
+                    item(key = "extracting_indicator") {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.Center,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            CircularProgressIndicator(modifier = Modifier.size(20.dp))
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Text("Extracting palette from photo...", style = MaterialTheme.typography.bodyMedium)
+                        }
+                    }
+                }
+
+                if (extractedSwatches.isNotEmpty()) {
+                    item(key = "extracted_swatches") {
+                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text(
+                                text = "Extracted Image Swatches",
+                                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .horizontalScroll(rememberScrollState()),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                extractedSwatches.forEach { swatch ->
+                                    Box(
+                                        modifier = Modifier
+                                            .size(32.dp)
+                                            .clip(CircleShape)
+                                            .background(swatch)
+                                            .border(1.dp, Color.Gray.copy(alpha = 0.4f), CircleShape)
+                                    )
+                                }
+                            }
+                        }
                     }
                 }
 
@@ -135,75 +264,6 @@ fun AtmosphericThemeCreatorDialog(
                         shape = RoundedCornerShape(12.dp),
                         singleLine = true
                     )
-                }
-
-                // 1-Tap Curated Gradient Presets
-                item(key = "gradient_presets") {
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Palette,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(16.dp)
-                            )
-                            Text(
-                                text = "Curated Gradient Presets (1-Tap)",
-                                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
-                                color = MaterialTheme.colorScheme.primary
-                            )
-                        }
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .horizontalScroll(rememberScrollState()),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            gradientPresets.forEach { preset ->
-                                Surface(
-                                    onClick = {
-                                        color1 = preset.topColor
-                                        color2 = preset.middleColor
-                                        color3 = preset.bottomColor
-                                        isDark = preset.isDark
-                                        if (themeName == "My Atmosphere" || themeName.isBlank()) {
-                                            themeName = preset.name
-                                        }
-                                    },
-                                    shape = RoundedCornerShape(12.dp),
-                                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                                    border = androidx.compose.foundation.BorderStroke(
-                                        0.75.dp,
-                                        MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)
-                                    )
-                                ) {
-                                    Row(
-                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                    ) {
-                                        Box(
-                                            modifier = Modifier
-                                                .size(20.dp)
-                                                .clip(CircleShape)
-                                                .background(
-                                                    Brush.verticalGradient(
-                                                        listOf(preset.topColor, preset.middleColor, preset.bottomColor)
-                                                    )
-                                                )
-                                        )
-                                        Text(
-                                            text = preset.name,
-                                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Medium)
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    }
                 }
 
                 // Individual Node Customization Header

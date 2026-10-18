@@ -1,6 +1,6 @@
 # Privacy Policy for .noma Launcher
 
-**Last Updated: October 3, 2026**
+**Last Updated: October 10, 2026**
 
 .noma Launcher ("we," "us," or "our") is committed to protecting your privacy. This Privacy Policy explains how we collect, use, and safeguard your information when you use our Android application.
 
@@ -21,12 +21,6 @@ To provide its core functionality as a minimalist launcher and productivity tool
 *   **ACCESS_COARSE_LOCATION / ACCESS_FINE_LOCATION**:
     *   **Purpose**: Enables the live Weather & Battery Glance feature by obtaining your approximate or precise location to fetch regional weather.
     *   **Data Handling**: Location coordinates are sent securely to the Open-Meteo weather API solely to retrieve current weather conditions. If location permissions are denied, the app can fall back to IP-based geolocation. Location data is never stored on external servers or sold.
-*   **READ_CONTACTS**:
-    *   **Purpose**: Enables "Universal Search" to find and display your contacts for quick dialing or messaging.
-    *   **Data Handling**: Contact details are accessed only during an active search and are not stored in our database or sent to any server.
-*   **READ_SMS**:
-    *   **Purpose**: Allows "Universal Search" to find and display text messages locally on your device.
-    *   **Data Handling**: Message content is read in real-time to provide search results. No message data is ever uploaded or shared.
 *   **USE_BIOMETRIC / USE_FINGERPRINT**:
     *   **Purpose**: Provides an optional security layer (App Lock) for accessing protected screens and features.
     *   **Data Handling**: We do not have access to your actual biometric data (fingerprints/face). We only receive a "success" or "failure" token from the Android system.

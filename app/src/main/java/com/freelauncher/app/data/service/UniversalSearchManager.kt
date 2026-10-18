@@ -1,13 +1,8 @@
 package com.freelauncher.app.data.service
 
-import android.content.Context
 import android.content.Intent
-import android.content.pm.PackageManager
 import android.net.Uri
-import android.provider.ContactsContract
 import android.provider.Settings
-import androidx.core.content.ContextCompat
-import com.google.firebase.crashlytics.FirebaseCrashlytics
 import java.util.Locale
 
 data class SettingSearchResult(
@@ -15,21 +10,6 @@ data class SettingSearchResult(
     val description: String,
     val intentAction: String,
     val keywords: List<String>
-)
-
-data class ContactSearchResult(
-    val id: String,
-    val name: String,
-    val phoneNumber: String,
-    val photoUri: String? = null
-)
-
-data class MessageSearchResult(
-    val id: String,
-    val senderOrRecipient: String,
-    val snippet: String,
-    val date: Long,
-    val address: String
 )
 
 object UniversalSearchManager {
@@ -144,115 +124,6 @@ object UniversalSearchManager {
         }.take(5)
     }
 
-    fun hasContactsPermission(context: Context): Boolean {
-        return ContextCompat.checkSelfPermission(
-            context,
-            android.Manifest.permission.READ_CONTACTS
-        ) == PackageManager.PERMISSION_GRANTED
-    }
-
-    fun searchContacts(context: Context, query: String): List<ContactSearchResult> {
-        val cleanQuery = query.trim()
-        if (cleanQuery.isBlank() || !hasContactsPermission(context)) return emptyList()
-
-        val results = mutableListOf<ContactSearchResult>()
-        val uri = ContactsContract.CommonDataKinds.Phone.CONTENT_URI
-        val projection = arrayOf(
-            ContactsContract.CommonDataKinds.Phone.CONTACT_ID,
-            ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME,
-            ContactsContract.CommonDataKinds.Phone.NUMBER,
-            ContactsContract.CommonDataKinds.Phone.PHOTO_URI
-        )
-        val selection = "${ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME} LIKE ? OR ${ContactsContract.CommonDataKinds.Phone.NUMBER} LIKE ?"
-        val selectionArgs = arrayOf("%$cleanQuery%", "%$cleanQuery%")
-
-        try {
-            context.contentResolver.query(
-                uri,
-                projection,
-                selection,
-                selectionArgs,
-                "${ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME} ASC"
-            )?.use { cursor ->
-                val idIdx = cursor.getColumnIndex(ContactsContract.CommonDataKinds.Phone.CONTACT_ID)
-                val nameIdx = cursor.getColumnIndex(ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME)
-                val numIdx = cursor.getColumnIndex(ContactsContract.CommonDataKinds.Phone.NUMBER)
-                val photoIdx = cursor.getColumnIndex(ContactsContract.CommonDataKinds.Phone.PHOTO_URI)
-
-                val seenNumbers = mutableSetOf<String>()
-                while (cursor.moveToNext() && results.size < 6) {
-                    val id = if (idIdx != -1) cursor.getString(idIdx) ?: "" else ""
-                    val name = if (nameIdx != -1) cursor.getString(nameIdx) ?: "Contact" else "Contact"
-                    val number = if (numIdx != -1) cursor.getString(numIdx) ?: "" else ""
-                    val photo = if (photoIdx != -1) cursor.getString(photoIdx) else null
-
-                    val normalized = number.replace(Regex("[^0-9+]"), "")
-                    if (normalized.isNotBlank() && !seenNumbers.contains(normalized)) {
-                        seenNumbers.add(normalized)
-                        results.add(ContactSearchResult(id, name, number, photo))
-                    }
-                }
-            }
-        } catch (e: Exception) {
-            FirebaseCrashlytics.getInstance().recordException(e)
-        }
-
-        return results
-    }
-
-    fun hasSmsPermission(context: Context): Boolean {
-        return ContextCompat.checkSelfPermission(
-            context,
-            android.Manifest.permission.READ_SMS
-        ) == PackageManager.PERMISSION_GRANTED
-    }
-
-    /**
-     * Searches for text messages (SMS) matching the query.
-     * CRITICAL: This operation is strictly local. Content is read from the device's 
-     * SMS provider and returned to the UI. No message data is transmitted off the device.
-     */
-    fun searchMessages(context: Context, query: String): List<MessageSearchResult> {
-        val cleanQuery = query.trim()
-        if (cleanQuery.isBlank() || !hasSmsPermission(context)) return emptyList()
-
-        val results = mutableListOf<MessageSearchResult>()
-        val uri = Uri.parse("content://sms")
-        val projection = arrayOf("_id", "address", "body", "date")
-        val selection = "body LIKE ? OR address LIKE ?"
-        val selectionArgs = arrayOf("%$cleanQuery%", "%$cleanQuery%")
-
-        try {
-            context.contentResolver.query(
-                uri,
-                projection,
-                selection,
-                selectionArgs,
-                "date DESC"
-            )?.use { cursor ->
-                val idIdx = cursor.getColumnIndex("_id")
-                val addressIdx = cursor.getColumnIndex("address")
-                val bodyIdx = cursor.getColumnIndex("body")
-                val dateIdx = cursor.getColumnIndex("date")
-
-                while (cursor.moveToNext() && results.size < 5) {
-                    val id = if (idIdx != -1) cursor.getString(idIdx) ?: "" else ""
-                    val address = if (addressIdx != -1) cursor.getString(addressIdx) ?: "SMS" else "SMS"
-                    val body = if (bodyIdx != -1) cursor.getString(bodyIdx) ?: "" else ""
-                    val date = if (dateIdx != -1) cursor.getLong(dateIdx) else 0L
-
-                    if (body.isNotBlank()) {
-                        results.add(MessageSearchResult(id, address, body, date, address))
-                    }
-                }
-            }
-        } catch (e: Exception) {
-            FirebaseCrashlytics.getInstance().recordException(e)
-        }
-
-        return results
-    }
-
     fun isPhoneNumberQuery(query: String): Boolean {
         val trimmed = query.trim()
         if (trimmed.length < 3) return false
@@ -260,15 +131,6 @@ object UniversalSearchManager {
         if (digitsCount < 3) return false
         val phoneCharCount = trimmed.count { it.isDigit() || it == '+' || it == '-' || it == '(' || it == ')' || it == ' ' || it == '.' }
         return (phoneCharCount.toFloat() / trimmed.length.toFloat()) >= 0.8f
-    }
-
-    fun isNumberInContacts(query: String, contacts: List<ContactSearchResult>): Boolean {
-        val searchDigits = query.replace(Regex("[^0-9]"), "")
-        if (searchDigits.isEmpty()) return false
-        return contacts.any { contact ->
-            val contactDigits = contact.phoneNumber.replace(Regex("[^0-9]"), "")
-            contactDigits.isNotEmpty() && (contactDigits.contains(searchDigits) || searchDigits.contains(contactDigits))
-        }
     }
 
     fun getYouTubeSearchIntent(query: String): Intent {

@@ -1,6 +1,7 @@
 package com.freelauncher.app
 
 import android.Manifest
+import android.content.pm.ActivityInfo
 import android.content.pm.PackageManager
 import android.os.Bundle
 import androidx.activity.compose.setContent
@@ -93,6 +94,15 @@ class MainActivity : FragmentActivity() {
                     if (!hasCoarse && !hasFine) {
                         requestLocationPermission()
                     }
+                }
+            }
+
+            // Force Activity orientation when Landscape Mode setting is toggled
+            LaunchedEffect(state.enableLandscapeMode) {
+                this@MainActivity.requestedOrientation = if (state.enableLandscapeMode) {
+                    ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+                } else {
+                    ActivityInfo.SCREEN_ORIENTATION_USER
                 }
             }
 
@@ -291,7 +301,8 @@ class MainActivity : FragmentActivity() {
                                     onOpenMultiPin = onOpenMultiPin,
                                     onOpenRearrangePinned = { viewModel.setRearrangePinnedDialogVisible(true) },
                                     onClearLockFeedback = onClearLockFeedback,
-                                    onToggleUltraFocus = { onToggleLock() }
+                                    onToggleUltraFocus = { onToggleLock() },
+                                    iconPackManager = viewModel.iconPackManager
                                 )
                             }
                             LauncherScreen.ALL_APPS -> {
@@ -301,6 +312,7 @@ class MainActivity : FragmentActivity() {
                                     onLongPressApp = onLongPressApp,
                                     onNavigate = onNavigate,
                                     onSearchQueryChange = onSearchQueryChange,
+                                    iconPackManager = viewModel.iconPackManager,
                                     onOpenCategoryManager = onOpenCategoryManager,
                                     onOpenAddCategory = onOpenAddCategory,
                                 )
@@ -342,6 +354,8 @@ class MainActivity : FragmentActivity() {
                     if (state.showRearrangePinnedDialog) {
                         RearrangePinnedDialog(
                             pinnedApps = state.pinnedApps,
+                            currentAlignment = state.sixAppsAlignment,
+                            onSixAppsAlignmentChanged = { viewModel.setSixAppsAlignment(it) },
                             onMoveUp = { viewModel.movePinnedAppUp(it) },
                             onMoveDown = { viewModel.movePinnedAppDown(it) },
                             onUnpin = { viewModel.unpinApp(it) },
@@ -358,6 +372,8 @@ class MainActivity : FragmentActivity() {
                             pinnedCount = state.pinnedApps.size,
                             maxSlots = 6,
                             categories = state.categories,
+                            allAppsAlignment = state.allAppsAlignment,
+                            onAllAppsAlignmentChanged = { viewModel.setAllAppsAlignment(it) },
                             onDismiss = { viewModel.closePinDialog() },
                             onConfirmPin = { viewModel.pinApp(it) },
                             onConfirmUnpin = { viewModel.unpinApp(it) },
@@ -394,6 +410,7 @@ class MainActivity : FragmentActivity() {
                             currentTheme = state.themeMode,
                             currentWallpaperId = state.wallpaperId,
                             customWallpaperUri = state.customWallpaperUri,
+                            userWallpapers = state.customWallpapers,
                             showMonograms = state.showMonograms,
                             showGestureHints = state.showGestureHints,
                             showNewsFeed = state.showNewsFeed,
@@ -433,7 +450,30 @@ class MainActivity : FragmentActivity() {
                             onOpenAboutSheet = { viewModel.setAboutSheetVisible(true) },
                             onOpenBackupSheet = { viewModel.setBackupSheetVisible(true) },
                             onOpenProSheet = { viewModel.setProSheetVisible(true) },
+                            enableLandscapeMode = state.enableLandscapeMode,
+                            onLandscapeModeToggled = { viewModel.setLandscapeModeEnabled(it) },
+                            iconDisplayMode = state.iconDisplayMode,
+                            selectedIconPackPackage = state.selectedIconPackPackage,
+                            installedIconPacks = state.installedIconPacks,
+                            minimalIconPackConfig = state.minimalIconPackConfig,
+                            onIconDisplayModeChanged = { viewModel.setIconDisplayMode(it) },
+                            onSelectedIconPackChanged = { viewModel.setSelectedIconPack(it) },
+                            onOpenMinimalIconPackCreator = { viewModel.setShowMinimalIconPackCreator(true) },
+                            appDrawerStyle = state.appDrawerStyle,
+                            onAppDrawerStyleChanged = { viewModel.setAppDrawerStyle(it) },
+                            hideEverythingOnHome = state.hideEverythingOnHome,
+                            onHideEverythingOnHomeToggled = { viewModel.setHideEverythingOnHome(it) },
                         ) { viewModel.setSettingsSheetVisible(visible = false) }
+                    }
+
+                    // Minimal Icon Pack Creator Dialog
+                    if (state.showMinimalIconPackCreator) {
+                        MinimalIconPackCreatorDialog(
+                            initialConfig = state.minimalIconPackConfig,
+                            onDismiss = { viewModel.setShowMinimalIconPackCreator(false) },
+                            onSaveConfig = { viewModel.saveMinimalIconPackConfig(it) },
+                            iconPackManager = viewModel.iconPackManager
+                        )
                     }
 
                     // About noma & Support Sheet
@@ -529,8 +569,21 @@ class MainActivity : FragmentActivity() {
                     // noma Pro Paywall Sheet
                     if (state.showProSheet) {
                         NomaProSheet(
-                            onUnlockPro = { viewModel.unlockProFeatures() },
+                            onUnlockPro = { viewModel.launchProPurchaseFlow(this@MainActivity) },
+                            onRestorePurchases = { viewModel.restorePurchases() },
                             onDismiss = { viewModel.setProSheetVisible(false) }
+                        )
+                    }
+
+                    // Accessibility Service Prominent Disclosure Dialog
+                    if (state.showAccessibilityDisclosureDialog) {
+                        AccessibilityDisclosureDialog(
+                            onConfirm = {
+                                viewModel.confirmAccessibilityDisclosure(this@MainActivity)
+                            },
+                            onDismiss = {
+                                viewModel.setAccessibilityDisclosureDialogVisible(false)
+                            }
                         )
                     }
 

@@ -20,4 +20,23 @@ class ClockStyleTest {
         val ids = ClockStyle.entries.map { it.id }
         assertEquals("Clock style IDs should be unique", ids.size, ids.toSet().size)
     }
+
+    @Test
+    fun `advanced clock styles flip timeline outline are defined correctly`() {
+        val flip = ClockStyle.entries.find { it.id == "flip" }
+        assertNotNull("FLIP clock style should exist", flip)
+        assertEquals("flip", flip?.id)
+
+        val timeline = ClockStyle.entries.find { it.id == "timeline" }
+        assertNotNull("TIMELINE clock style should exist", timeline)
+        assertEquals("timeline", timeline?.id)
+
+        val outline = ClockStyle.entries.find { it.id == "outline" }
+        assertNotNull("OUTLINE clock style should exist", outline)
+        assertEquals("outline", outline?.id)
+
+        val rotatingWheels = ClockStyle.entries.find { it.id == "rotating_wheels" }
+        assertNotNull("ROTATING_WHEELS clock style should exist", rotatingWheels)
+        assertEquals("rotating_wheels", rotatingWheels?.id)
+    }
 }

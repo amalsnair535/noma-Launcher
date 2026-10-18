@@ -16,12 +16,9 @@ import java.util.Date
 import java.util.Locale
 import java.util.concurrent.TimeUnit
 
-class RssParser {
-    private val client = OkHttpClient.Builder()
-        .connectTimeout(10, TimeUnit.SECONDS)
-        .readTimeout(15, TimeUnit.SECONDS)
-        .followRedirects(true)
-        .build()
+class RssParser(
+    private val client: OkHttpClient = com.freelauncher.app.data.service.NetworkClientModule.sharedOkHttpClient
+) {
 
     private val dateFormats = listOf(
         SimpleDateFormat("EEE, dd MMM yyyy HH:mm:ss zzz", Locale.US),

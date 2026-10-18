@@ -2,9 +2,7 @@ package com.freelauncher.app.data.repository
 
 import android.content.Context
 import com.freelauncher.app.data.db.*
-import com.freelauncher.app.data.models.AppCategory
-import com.freelauncher.app.data.models.AppCategoryInfo
-import com.freelauncher.app.data.models.AppItem
+import com.freelauncher.app.data.models.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -280,6 +278,91 @@ class LauncherRepository(
         val limited = current.take(6)
         settingDao.setSetting(LauncherSettingEntity("pinned_apps", limited.joinToString(",")))
         true
+    }
+
+    suspend fun getIconDisplayMode(): IconDisplayMode = withContext(Dispatchers.IO) {
+        val raw = settingDao.getSettingValue("icon_display_mode")
+        if (raw != null) IconDisplayMode.fromName(raw) else IconDisplayMode.TEXT_ONLY
+    }
+
+    suspend fun saveIconDisplayMode(mode: IconDisplayMode) = withContext(Dispatchers.IO) {
+        settingDao.setSetting(LauncherSettingEntity("icon_display_mode", mode.name))
+    }
+
+    suspend fun getAppDrawerStyle(): AppDrawerStyle = withContext(Dispatchers.IO) {
+        val raw = settingDao.getSettingValue("app_drawer_style")
+        if (raw != null) AppDrawerStyle.fromName(raw) else AppDrawerStyle.CLASSIC
+    }
+
+    suspend fun saveAppDrawerStyle(style: AppDrawerStyle) = withContext(Dispatchers.IO) {
+        settingDao.setSetting(LauncherSettingEntity("app_drawer_style", style.name))
+    }
+
+    suspend fun getSixAppsAlignment(): SixAppsAlignment = withContext(Dispatchers.IO) {
+        val raw = settingDao.getSettingValue("six_apps_alignment")
+        if (raw != null) SixAppsAlignment.fromName(raw) else SixAppsAlignment.LEFT
+    }
+
+    suspend fun saveSixAppsAlignment(alignment: SixAppsAlignment) = withContext(Dispatchers.IO) {
+        settingDao.setSetting(LauncherSettingEntity("six_apps_alignment", alignment.name))
+    }
+
+    suspend fun getAllAppsAlignment(): AllAppsAlignment = withContext(Dispatchers.IO) {
+        val raw = settingDao.getSettingValue("all_apps_alignment")
+        if (raw != null) AllAppsAlignment.fromName(raw) else AllAppsAlignment.CENTER
+    }
+
+    suspend fun saveAllAppsAlignment(alignment: AllAppsAlignment) = withContext(Dispatchers.IO) {
+        settingDao.setSetting(LauncherSettingEntity("all_apps_alignment", alignment.name))
+    }
+
+    suspend fun getHideEverythingOnHome(): Boolean = withContext(Dispatchers.IO) {
+        settingDao.getSettingValue("hide_everything_on_home") == "true"
+    }
+
+    suspend fun saveHideEverythingOnHome(hide: Boolean) = withContext(Dispatchers.IO) {
+        settingDao.setSetting(LauncherSettingEntity("hide_everything_on_home", hide.toString()))
+    }
+
+    suspend fun getSelectedIconPack(): String = withContext(Dispatchers.IO) {
+        settingDao.getSettingValue("selected_icon_pack_package") ?: ""
+    }
+
+    suspend fun saveSelectedIconPack(pkgName: String) = withContext(Dispatchers.IO) {
+        settingDao.setSetting(LauncherSettingEntity("selected_icon_pack_package", pkgName))
+    }
+
+    suspend fun getMinimalIconPackConfig(): MinimalIconPackConfig = withContext(Dispatchers.IO) {
+        val raw = settingDao.getSettingValue("minimal_icon_pack_config")
+        if (!raw.isNullOrBlank()) {
+            try {
+                val obj = JSONObject(raw)
+                MinimalIconPackConfig(
+                    shape = IconShape.valueOf(obj.optString("shape", "SQUIRCLE")),
+                    containerStyle = IconContainerStyle.valueOf(obj.optString("containerStyle", "SOLID")),
+                    colorTheme = IconColorTheme.valueOf(obj.optString("colorTheme", "MONOCHROME_WHITE")),
+                    customColorHex = obj.optString("customColorHex", "#E2D3FA"),
+                    strokeWidthDp = obj.optDouble("strokeWidthDp", 1.5).toFloat(),
+                    useMonogramGlyph = obj.optBoolean("useMonogramGlyph", true)
+                )
+            } catch (_: Exception) {
+                MinimalIconPackConfig()
+            }
+        } else {
+            MinimalIconPackConfig()
+        }
+    }
+
+    suspend fun saveMinimalIconPackConfig(config: MinimalIconPackConfig) = withContext(Dispatchers.IO) {
+        val obj = JSONObject().apply {
+            put("shape", config.shape.name)
+            put("containerStyle", config.containerStyle.name)
+            put("colorTheme", config.colorTheme.name)
+            put("customColorHex", config.customColorHex)
+            put("strokeWidthDp", config.strokeWidthDp)
+            put("useMonogramGlyph", config.useMonogramGlyph)
+        }
+        settingDao.setSetting(LauncherSettingEntity("minimal_icon_pack_config", obj.toString()))
     }
 
     suspend fun unpinApp(appId: String): Boolean = withContext(Dispatchers.IO) {

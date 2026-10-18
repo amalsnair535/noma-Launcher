@@ -1,15 +1,19 @@
 package com.freelauncher.app.ui.theme
 
+import android.os.Build
 import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 
 enum class LauncherThemeMode(val id: String, val displayName: String, val isDark: Boolean) {
     OLED_BLACK("oled_black", "OLED Pure Black", true),
+    MATERIAL_YOU("material_you", "Material You (Dynamic Colors)", true),
     CHARCOAL("charcoal", "Charcoal Dark", true),
     PAPER_WARM("paper_warm", "Warm Paper (E-Ink)", false),
     MINIMAL_LIGHT("minimal_light", "Minimal Light", false)
@@ -85,8 +89,16 @@ fun FreeLauncherTheme(
     launcherFont: LauncherFont = LauncherFont.MINIMAL_SANS,
     content: @Composable () -> Unit
 ) {
+    val context = LocalContext.current
     val colorScheme: ColorScheme = when (themeMode) {
         LauncherThemeMode.OLED_BLACK -> OledColorScheme
+        LauncherThemeMode.MATERIAL_YOU -> {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                dynamicDarkColorScheme(context)
+            } else {
+                CharcoalColorScheme
+            }
+        }
         LauncherThemeMode.CHARCOAL -> CharcoalColorScheme
         LauncherThemeMode.PAPER_WARM -> PaperColorScheme
         LauncherThemeMode.MINIMAL_LIGHT -> LightColorScheme

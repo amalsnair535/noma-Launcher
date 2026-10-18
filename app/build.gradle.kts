@@ -18,8 +18,8 @@ android {
     applicationId = "com.freelauncher.app"
     minSdk = 24
     targetSdk = 37
-    versionCode = 22
-    versionName = "3.0"
+    versionCode = 27
+    versionName = "3.5"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }
@@ -67,8 +67,8 @@ android {
   }
 
   lint {
-    checkReleaseBuilds = false
-    abortOnError = false
+    checkReleaseBuilds = true
+    abortOnError = true
   }
 
   testOptions { unitTests { isIncludeAndroidResources = true } }
@@ -97,6 +97,7 @@ dependencies {
   add("androidTestImplementation", platform(bom))
   implementation(platform(libs.firebase.bom))
   implementation(libs.androidx.activity.compose)
+  implementation(libs.androidx.fragment.ktx)
   implementation(libs.androidx.biometric)
   implementation(libs.androidx.compose.material.icons.core)
   implementation(libs.androidx.compose.material.icons.extended)
@@ -124,6 +125,7 @@ dependencies {
   implementation(libs.firebase.analytics)
   implementation(libs.playAppUpdate)
   implementation(libs.playAppUpdateKtx)
+  implementation(libs.play.billing.ktx)
   implementation(libs.play.services.location)
   implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.10.2")
   testImplementation(libs.androidx.core)

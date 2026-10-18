@@ -10,45 +10,56 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.platform.LocalContext
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 
 object LauncherHaptics {
 
+    private val hapticsScope = CoroutineScope(Dispatchers.Default)
+
     /**
      * Plays a crisp, light tactile tick for scrolling past list items or adjusting sliders.
+     * Executed off the main thread to prevent UI thread frame drops.
      */
     fun playTick(context: Context) {
-        try {
-            val vibrator = getVibrator(context)
-            if (vibrator != null && vibrator.hasVibrator()) {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                    vibrator.vibrate(VibrationEffect.createPredefined(VibrationEffect.EFFECT_TICK))
-                } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                    vibrator.vibrate(VibrationEffect.createOneShot(12, 40))
-                } else {
-                    @Suppress("DEPRECATION")
-                    vibrator.vibrate(12)
+        hapticsScope.launch {
+            try {
+                val vibrator = getVibrator(context)
+                if (vibrator != null && vibrator.hasVibrator()) {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                        vibrator.vibrate(VibrationEffect.createPredefined(VibrationEffect.EFFECT_TICK))
+                    } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                        vibrator.vibrate(VibrationEffect.createOneShot(12, 40))
+                    } else {
+                        @Suppress("DEPRECATION")
+                        vibrator.vibrate(12)
+                    }
                 }
-            }
-        } catch (_: Exception) {}
+            } catch (_: Exception) {}
+        }
     }
 
     /**
      * Plays a slightly more pronounced click for button presses, switches, or chip selections.
+     * Executed off the main thread to prevent UI thread frame drops.
      */
     fun playClick(context: Context) {
-        try {
-            val vibrator = getVibrator(context)
-            if (vibrator != null && vibrator.hasVibrator()) {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                    vibrator.vibrate(VibrationEffect.createPredefined(VibrationEffect.EFFECT_CLICK))
-                } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                    vibrator.vibrate(VibrationEffect.createOneShot(18, 80))
-                } else {
-                    @Suppress("DEPRECATION")
-                    vibrator.vibrate(18)
+        hapticsScope.launch {
+            try {
+                val vibrator = getVibrator(context)
+                if (vibrator != null && vibrator.hasVibrator()) {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                        vibrator.vibrate(VibrationEffect.createPredefined(VibrationEffect.EFFECT_CLICK))
+                    } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                        vibrator.vibrate(VibrationEffect.createOneShot(18, 80))
+                    } else {
+                        @Suppress("DEPRECATION")
+                        vibrator.vibrate(18)
+                    }
                 }
-            }
-        } catch (_: Exception) {}
+            } catch (_: Exception) {}
+        }
     }
 
     private fun getVibrator(context: Context): Vibrator? {

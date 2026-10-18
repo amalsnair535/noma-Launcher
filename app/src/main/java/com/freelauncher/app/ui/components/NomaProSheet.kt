@@ -27,6 +27,7 @@ import com.freelauncher.app.ui.util.LauncherHaptics
 @Composable
 fun NomaProSheet(
     onUnlockPro: () -> Unit,
+    onRestorePurchases: () -> Unit = {},
     onDismiss: () -> Unit
 ) {
     val context = LocalContext.current
@@ -157,8 +158,8 @@ fun NomaProSheet(
                     Column(modifier = Modifier.padding(16.dp)) {
                         ProFeatureRow(
                             icon = Icons.Outlined.Schedule,
-                            title = "11 Advanced Clock Styles",
-                            description = "Access Bubbly 3D, Serif, Monospace, Word-Based, Handwritten & Outline clocks (Large & Thin Digital remain 100% FREE)."
+                            title = "14 Advanced Clock Styles",
+                            description = "Access Flip, Timeline, Rotating Wheels, Bubbly 3D, Serif, Monospace, Word-Based, Handwritten & Outline clocks (Large & Thin Digital remain 100% FREE)."
                         )
                         HorizontalDivider(
                             color = MaterialTheme.colorScheme.outline.copy(alpha = 0.15f),
@@ -174,9 +175,27 @@ fun NomaProSheet(
                             modifier = Modifier.padding(vertical = 12.dp)
                         )
                         ProFeatureRow(
+                            icon = Icons.Outlined.AutoAwesome,
+                            title = "Custom Icon Packs & Monograms (BETA)",
+                            description = "Customize Minimal Icon Packs with shapes & colors, load 3rd-party icon packs, original icons, or letter monograms (Text Only remains 100% FREE)."
+                        )
+                        HorizontalDivider(
+                            color = MaterialTheme.colorScheme.outline.copy(alpha = 0.15f),
+                            modifier = Modifier.padding(vertical = 12.dp)
+                        )
+                        ProFeatureRow(
+                            icon = Icons.Outlined.ViewStream,
+                            title = "Neo Minimal App Drawer (BETA)",
+                            description = "Experience a centered typography app drawer with horizontal swipe categories and floating bottom search (Classic App Drawer remains 100% FREE)."
+                        )
+                        HorizontalDivider(
+                            color = MaterialTheme.colorScheme.outline.copy(alpha = 0.15f),
+                            modifier = Modifier.padding(vertical = 12.dp)
+                        )
+                        ProFeatureRow(
                             icon = Icons.Outlined.TextFields,
                             title = "Custom Launcher Typography",
-                            description = "Select custom launcher font families including Serif, Monospace, and Cursive."
+                            description = "Select custom launcher font families including Segoe WP (Metro), Serif, Monospace, Cursive, and Condensed."
                         )
                         HorizontalDivider(
                             color = MaterialTheme.colorScheme.outline.copy(alpha = 0.15f),
@@ -239,11 +258,11 @@ fun NomaProSheet(
                     TextButton(
                         onClick = {
                             LauncherHaptics.playClick(context)
-                            onUnlockPro()
+                            onRestorePurchases()
                         }
                     ) {
                         Text(
-                            text = "Instant Developer Test Unlock / Restore",
+                            text = "Restore Past Purchases",
                             style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Medium),
                             color = MaterialTheme.colorScheme.secondary
                         )

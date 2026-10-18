@@ -23,10 +23,27 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.graphics.toArgb
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.Spring
 import com.freelauncher.app.ui.util.DateTimeUtils
 import java.util.*
 import androidx.compose.ui.platform.LocalLocale
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.LaunchedEffect
 
 enum class ClockStyle(val id: String, val displayName: String) {
     LARGE_DIGITAL("large_digital", "Large Digital"),
@@ -41,7 +58,10 @@ enum class ClockStyle(val id: String, val displayName: String) {
     OUTLINE("outline", "Modern Outline"),
     BOLD_BLOCK("bold_block", "Bold Block"),
     MINIMAL_SECONDS("minimal_seconds", "Minimal w/ Seconds"),
-    BUBBLY_3D("bubbly_3d", "Bubbly 3D")
+    BUBBLY_3D("bubbly_3d", "Bubbly 3D"),
+    FLIP("flip", "Flip Split-Flap"),
+    TIMELINE("timeline", "Timeline Progress"),
+    ROTATING_WHEELS("rotating_wheels", "Rotating Wheels")
 }
 
 enum class TimeCardVerticalAlign(val id: String, val displayName: String) {
@@ -85,6 +105,9 @@ fun MinimalistClock(
                 ClockStyle.BOLD_BLOCK -> BoldBlockClock(currentTime)
                 ClockStyle.MINIMAL_SECONDS -> MinimalSecondsClock(currentTime)
                 ClockStyle.BUBBLY_3D -> Bubbly3DClock(currentTime)
+                ClockStyle.FLIP -> FlipClock(currentTime)
+                ClockStyle.TIMELINE -> TimelineClock(currentTime)
+                ClockStyle.ROTATING_WHEELS -> RotatingWheelsClock(currentTime)
             }
         }
     }
@@ -194,26 +217,400 @@ fun HandwrittenClock(time: Date) {
 
 @Composable
 fun OutlineClock(time: Date) {
-    val h = DateTimeUtils.format(time, DateTimeUtils.Patterns.TIME_HOUR_24, LocalLocale.current.platformLocale)
-    val m = DateTimeUtils.format(time, DateTimeUtils.Patterns.TIME_MINUTE, LocalLocale.current.platformLocale)
-    
-    Row(verticalAlignment = Alignment.CenterVertically) {
+    val locale = LocalLocale.current.platformLocale
+    val t = DateTimeUtils.format(time, DateTimeUtils.Patterns.TIME_HM, locale)
+    val strokeColor = MaterialTheme.colorScheme.onBackground
+    val density = androidx.compose.ui.platform.LocalDensity.current
+
+    androidx.compose.foundation.Canvas(
+        modifier = Modifier
+            .width(260.dp)
+            .height(84.dp)
+    ) {
+        drawIntoCanvas { canvas ->
+            val nativePaint = android.graphics.Paint().apply {
+                isAntiAlias = true
+                style = android.graphics.Paint.Style.STROKE
+                strokeWidth = with(density) { 3.dp.toPx() }
+                color = strokeColor.toArgb()
+                textSize = with(density) { 68.sp.toPx() }
+                typeface = android.graphics.Typeface.create(android.graphics.Typeface.DEFAULT, android.graphics.Typeface.BOLD)
+                textAlign = android.graphics.Paint.Align.CENTER
+            }
+
+            val x = size.width / 2f
+            val y = (size.height / 2f) - ((nativePaint.descent() + nativePaint.ascent()) / 2f)
+            canvas.nativeCanvas.drawText(t, x, y, nativePaint)
+        }
+    }
+}
+
+@Composable
+fun FlipClock(time: Date) {
+    val locale = LocalLocale.current.platformLocale
+    val h = DateTimeUtils.format(time, DateTimeUtils.Patterns.TIME_HOUR, locale)
+    val m = DateTimeUtils.format(time, DateTimeUtils.Patterns.TIME_MINUTE, locale)
+
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        modifier = Modifier.padding(horizontal = 8.dp)
+    ) {
+        FlipCardGroup(text = h)
+
+        // Seam Colon Separator
+        Column(
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            modifier = Modifier.padding(horizontal = 2.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(6.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.onBackground)
+            )
+            Box(
+                modifier = Modifier
+                    .size(6.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.onBackground)
+            )
+        }
+
+        FlipCardGroup(text = m)
+    }
+}
+
+@Composable
+private fun FlipCardGroup(text: String) {
+    val digits = text.padStart(2, '0')
+    val containerBg = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.85f)
+    val contentColor = MaterialTheme.colorScheme.onSurfaceVariant
+    val borderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.35f)
+
+    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+        digits.forEach { digitChar ->
+            SingleFlipDigitCard(
+                digit = digitChar.toString(),
+                containerBg = containerBg,
+                contentColor = contentColor,
+                borderColor = borderColor
+            )
+        }
+    }
+}
+
+@Composable
+private fun SingleFlipDigitCard(
+    digit: String,
+    containerBg: Color,
+    contentColor: Color,
+    borderColor: Color
+) {
+    var previousDigit by remember { mutableStateOf(digit) }
+    var currentDigit by remember { mutableStateOf(digit) }
+    val rotation = remember { androidx.compose.animation.core.Animatable(0f) }
+
+    LaunchedEffect(digit) {
+        if (digit != currentDigit) {
+            previousDigit = currentDigit
+            currentDigit = digit
+            rotation.snapTo(0f)
+            rotation.animateTo(
+                targetValue = 180f,
+                animationSpec = androidx.compose.animation.core.tween(durationMillis = 350, easing = androidx.compose.animation.core.FastOutSlowInEasing)
+            )
+        }
+    }
+
+    val displayDigit = if (rotation.value < 90f) previousDigit else currentDigit
+
+    Box(
+        modifier = Modifier
+            .width(42.dp)
+            .height(58.dp)
+            .shadow(2.dp, RoundedCornerShape(8.dp))
+            .clip(RoundedCornerShape(8.dp))
+            .background(containerBg)
+            .border(1.dp, borderColor, RoundedCornerShape(8.dp)),
+        contentAlignment = Alignment.Center
+    ) {
         Text(
-            text = h,
-            style = MaterialTheme.typography.displayLarge.copy(
-                fontSize = 80.sp,
-                fontWeight = FontWeight.ExtraBold
+            text = displayDigit,
+            style = MaterialTheme.typography.displayMedium.copy(
+                fontSize = 38.sp,
+                fontWeight = FontWeight.Bold
             ),
-            color = MaterialTheme.colorScheme.primary
+            color = contentColor,
+            textAlign = TextAlign.Center
         )
-        Spacer(modifier = Modifier.width(8.dp))
+
+        // Seam Line splitting top and bottom half
+        HorizontalDivider(
+            modifier = Modifier
+                .fillMaxWidth()
+                .align(Alignment.Center),
+            thickness = 1.dp,
+            color = MaterialTheme.colorScheme.background.copy(alpha = 0.7f)
+        )
+    }
+}
+
+@Composable
+fun TimelineClock(time: Date) {
+    val locale = LocalLocale.current.platformLocale
+    val t = DateTimeUtils.format(time, DateTimeUtils.Patterns.TIME_HM_A, locale)
+    val d = DateTimeUtils.format(time, DateTimeUtils.Patterns.DATE_EEE_MMM_D, locale)
+
+    val cal = remember(time) { Calendar.getInstance().apply { this.time = time } }
+    val secondOfDay = cal.get(Calendar.HOUR_OF_DAY) * 3600 + cal.get(Calendar.MINUTE) * 60 + cal.get(Calendar.SECOND)
+    val dayProgress = (secondOfDay / 86400f).coerceIn(0f, 1f)
+
+    val minuteOfHour = cal.get(Calendar.MINUTE)
+    val hourProgress = ((minuteOfHour * 60 + cal.get(Calendar.SECOND)) / 3600f).coerceIn(0f, 1f)
+
+    val secondOfMinute = cal.get(Calendar.SECOND)
+    val minuteProgress = (secondOfMinute / 60f).coerceIn(0f, 1f)
+
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+        modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
+    ) {
         Text(
-            text = m,
-            style = MaterialTheme.typography.displayLarge.copy(
-                fontSize = 80.sp,
-                fontWeight = FontWeight.Thin
+            text = t,
+            style = MaterialTheme.typography.displayMedium.copy(
+                fontSize = 44.sp,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = (-1).sp
             ),
-            color = MaterialTheme.colorScheme.onBackground
+            color = MaterialTheme.colorScheme.onBackground,
+            textAlign = TextAlign.Center
+        )
+        Text(
+            text = d.uppercase(Locale.ROOT),
+            style = MaterialTheme.typography.labelMedium.copy(
+                fontWeight = FontWeight.SemiBold,
+                letterSpacing = 1.5.sp
+            ),
+            color = MaterialTheme.colorScheme.secondary,
+            textAlign = TextAlign.Center
+        )
+
+        Spacer(modifier = Modifier.height(14.dp))
+
+        // Progress Bar 1: DAY
+        TimelineProgressBarRow(label = "DAY", progress = dayProgress)
+        Spacer(modifier = Modifier.height(6.dp))
+
+        // Progress Bar 2: HOUR
+        TimelineProgressBarRow(label = "HOUR", progress = hourProgress)
+        Spacer(modifier = Modifier.height(6.dp))
+
+        // Progress Bar 3: MINUTE
+        TimelineProgressBarRow(label = "MINUTE", progress = minuteProgress)
+    }
+}
+
+@Composable
+private fun TimelineProgressBarRow(label: String, progress: Float) {
+    val trackBg = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+    val progressColor = MaterialTheme.colorScheme.primary
+
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        modifier = Modifier.width(220.dp)
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelSmall.copy(
+                fontWeight = FontWeight.Bold,
+                fontSize = 9.sp,
+                letterSpacing = 1.sp
+            ),
+            color = MaterialTheme.colorScheme.secondary,
+            modifier = Modifier.width(46.dp)
+        )
+
+        androidx.compose.foundation.Canvas(
+            modifier = Modifier
+                .weight(1f)
+                .height(6.dp)
+        ) {
+            val width = size.width
+            val height = size.height
+            val strokeCap = androidx.compose.ui.graphics.StrokeCap.Round
+
+            // Draw track
+            drawLine(
+                color = trackBg,
+                start = androidx.compose.ui.geometry.Offset(0f, height / 2),
+                end = androidx.compose.ui.geometry.Offset(width, height / 2),
+                strokeWidth = height,
+                cap = strokeCap
+            )
+
+            // Draw filled progress
+            if (progress > 0f) {
+                drawLine(
+                    color = progressColor,
+                    start = Offset(0f, height / 2),
+                    end = Offset(width * progress, height / 2),
+                    strokeWidth = height,
+                    cap = strokeCap
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun RotatingWheelsClock(time: Date) {
+    val locale = LocalLocale.current.platformLocale
+    val cal = remember(time) { Calendar.getInstance().apply { this.time = time } }
+    val hourStr = DateTimeUtils.format(time, DateTimeUtils.Patterns.TIME_HOUR_24, locale)
+    val minute = cal.get(Calendar.MINUTE)
+    val second = cal.get(Calendar.SECOND)
+
+    // Animated rotation angles for smooth wheel turning
+    val minuteAngleTarget = - (minute * 6f)
+    val secondAngleTarget = - (second * 6f)
+
+    val animatedMinuteAngle by animateFloatAsState(
+        targetValue = minuteAngleTarget,
+        animationSpec = spring(stiffness = Spring.StiffnessLow),
+        label = "min_wheel_anim"
+    )
+    val animatedSecondAngle by animateFloatAsState(
+        targetValue = secondAngleTarget,
+        animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
+        label = "sec_wheel_anim"
+    )
+
+    val onSurfaceColor = MaterialTheme.colorScheme.onBackground
+    val trackColor = MaterialTheme.colorScheme.secondary.copy(alpha = 0.45f)
+    val density = androidx.compose.ui.platform.LocalDensity.current
+
+    Box(
+        modifier = Modifier
+            .size(260.dp)
+            .padding(4.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        // High-precision Native Canvas Drawing for concentric wheels, ticks, numbers & indicator
+        androidx.compose.foundation.Canvas(
+            modifier = Modifier.fillMaxSize()
+        ) {
+            val centerPt = Offset(size.width / 2f, size.height / 2f)
+            val innerNumRadius = size.width * 0.23f
+            val tickRadius = size.width * 0.33f
+            val outerNumRadius = size.width * 0.41f
+            val outerTicksRadius = size.width * 0.48f
+
+            val nativeTextPaint = android.graphics.Paint().apply {
+                isAntiAlias = true
+                style = android.graphics.Paint.Style.FILL
+                color = onSurfaceColor.toArgb()
+                textSize = with(density) { 13.sp.toPx() }
+                typeface = android.graphics.Typeface.create(android.graphics.Typeface.DEFAULT, android.graphics.Typeface.BOLD)
+                textAlign = android.graphics.Paint.Align.CENTER
+            }
+
+            drawIntoCanvas { canvas ->
+                // 1. Draw Inner Wheel Numbers (Minutes: 00, 05, 10 ... 55)
+                for (i in 0 until 12) {
+                    val valNum = i * 5
+                    val valStr = valNum.toString().padStart(2, '0')
+                    val angleDeg = (i * 30f) + animatedMinuteAngle
+                    val rad = Math.toRadians(angleDeg.toDouble())
+
+                    val x = centerPt.x + (innerNumRadius * Math.cos(rad)).toFloat()
+                    val y = centerPt.y + (innerNumRadius * Math.sin(rad)).toFloat() - ((nativeTextPaint.descent() + nativeTextPaint.ascent()) / 2f)
+                    canvas.nativeCanvas.drawText(valStr, x, y, nativeTextPaint)
+                }
+
+                // 2. Draw Outer Wheel Numbers (Seconds: 00, 05, 10 ... 55)
+                for (i in 0 until 12) {
+                    val valNum = i * 5
+                    val valStr = valNum.toString().padStart(2, '0')
+                    val angleDeg = (i * 30f) + animatedSecondAngle
+                    val rad = Math.toRadians(angleDeg.toDouble())
+
+                    val x = centerPt.x + (outerNumRadius * Math.cos(rad)).toFloat()
+                    val y = centerPt.y + (outerNumRadius * Math.sin(rad)).toFloat() - ((nativeTextPaint.descent() + nativeTextPaint.ascent()) / 2f)
+                    canvas.nativeCanvas.drawText(valStr, x, y, nativeTextPaint)
+                }
+            }
+
+            // 3. Draw Concentric Seam Ring Ticks (60 ticks for Minutes)
+            for (i in 0 until 60) {
+                val tickAngleDeg = (i * 6f) + animatedMinuteAngle
+                val rad = Math.toRadians(tickAngleDeg.toDouble())
+                val isMajor = i % 5 == 0
+                val tickLength = if (isMajor) 10.dp.toPx() else 5.dp.toPx()
+                val strokeW = if (isMajor) 2.dp.toPx() else 1.dp.toPx()
+
+                val startX = centerPt.x + (tickRadius * Math.cos(rad)).toFloat()
+                val startY = centerPt.y + (tickRadius * Math.sin(rad)).toFloat()
+                val endX = centerPt.x + ((tickRadius + tickLength) * Math.cos(rad)).toFloat()
+                val endY = centerPt.y + ((tickRadius + tickLength) * Math.sin(rad)).toFloat()
+
+                drawLine(
+                    color = if (isMajor) onSurfaceColor else trackColor,
+                    start = Offset(startX, startY),
+                    end = Offset(endX, endY),
+                    strokeWidth = strokeW
+                )
+            }
+
+            // 4. Draw Outer Ring Ticks (60 ticks for Seconds)
+            for (i in 0 until 60) {
+                val tickAngleDeg = (i * 6f) + animatedSecondAngle
+                val rad = Math.toRadians(tickAngleDeg.toDouble())
+                val isMajor = i % 5 == 0
+                val tickLength = if (isMajor) 10.dp.toPx() else 5.dp.toPx()
+                val strokeW = if (isMajor) 2.dp.toPx() else 1.dp.toPx()
+
+                val startX = centerPt.x + (outerTicksRadius * Math.cos(rad)).toFloat()
+                val startY = centerPt.y + (outerTicksRadius * Math.sin(rad)).toFloat()
+                val endX = centerPt.x + ((outerTicksRadius - tickLength) * Math.cos(rad)).toFloat()
+                val endY = centerPt.y + ((outerTicksRadius - tickLength) * Math.sin(rad)).toFloat()
+
+                drawLine(
+                    color = if (isMajor) onSurfaceColor else trackColor,
+                    start = Offset(startX, startY),
+                    end = Offset(endX, endY),
+                    strokeWidth = strokeW
+                )
+            }
+
+            // 5. Draw 3 o'clock Selection Capsule Indicator Frame
+            val capsuleLeft = centerPt.x + (innerNumRadius * 0.70f)
+            val capsuleTop = centerPt.y - 18.dp.toPx()
+            val capsuleRight = centerPt.x + (outerNumRadius * 1.15f)
+            val capsuleBottom = centerPt.y + 18.dp.toPx()
+
+            drawRoundRect(
+                color = onSurfaceColor,
+                topLeft = Offset(capsuleLeft, capsuleTop),
+                size = Size(capsuleRight - capsuleLeft, capsuleBottom - capsuleTop),
+                cornerRadius = CornerRadius(16.dp.toPx(), 16.dp.toPx()),
+                style = Stroke(width = 2.dp.toPx())
+            )
+        }
+
+        // Center Bold Hour Glyph
+        Text(
+            text = hourStr,
+            style = MaterialTheme.typography.displayMedium.copy(
+                fontSize = 46.sp,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = (-1).sp
+            ),
+            color = onSurfaceColor,
+            textAlign = TextAlign.Center
         )
     }
 }

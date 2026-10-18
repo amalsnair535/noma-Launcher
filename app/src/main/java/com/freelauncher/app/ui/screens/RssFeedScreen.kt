@@ -20,6 +20,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
@@ -48,6 +49,8 @@ fun RssFeedScreen(
     }
 
     val context = LocalContext.current
+    val configuration = LocalConfiguration.current
+    val isLandscape = configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
     var totalDragX by remember { mutableFloatStateOf(0f) }
     val lazyListState = rememberLazyListState()
     TrackScrollHaptics(lazyListState)
@@ -56,7 +59,7 @@ fun RssFeedScreen(
         modifier = modifier
             .fillMaxSize()
             .statusBarsPadding()
-            .padding(top = 20.dp)
+            .padding(top = if (isLandscape) 8.dp else 20.dp)
             .navigationBarsPadding()
             .pointerInput(Unit) {
                 detectDragGestures(
@@ -225,15 +228,43 @@ fun RssFeedScreen(
                     }
                 }
             } else {
-                items(uniqueArticles, key = { it.link.ifBlank { "${it.id}#${it.title}" } }) { article ->
-                    RssArticleItem(
-                        article = article,
-                        onClick = {
-                            if (article.link.isNotBlank()) {
-                                onOpenArticle(article.link)
+                if (isLandscape) {
+                    val articleRows = uniqueArticles.chunked(2)
+                    items(
+                        items = articleRows,
+                        key = { row -> row.first().link.ifBlank { "${row.first().id}#${row.first().title}" } }
+                    ) { rowArticles ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(16.dp)
+                        ) {
+                            rowArticles.forEach { article ->
+                                RssArticleItem(
+                                    article = article,
+                                    onClick = {
+                                        if (article.link.isNotBlank()) {
+                                            onOpenArticle(article.link)
+                                        }
+                                    },
+                                    modifier = Modifier.weight(1f)
+                                )
+                            }
+                            if (rowArticles.size == 1) {
+                                Spacer(modifier = Modifier.weight(1f))
                             }
                         }
-                    )
+                    }
+                } else {
+                    items(uniqueArticles, key = { it.link.ifBlank { "${it.id}#${it.title}" } }) { article ->
+                        RssArticleItem(
+                            article = article,
+                            onClick = {
+                                if (article.link.isNotBlank()) {
+                                    onOpenArticle(article.link)
+                                }
+                            }
+                        )
+                    }
                 }
 
                 // Add News Feed Button at bottom of feed

@@ -33,7 +33,6 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.outlined.Call
 import androidx.compose.material.icons.outlined.Language
-import androidx.compose.material.icons.outlined.Message
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.*
@@ -46,6 +45,7 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.testTag
@@ -56,10 +56,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.freelauncher.app.R
-import com.freelauncher.app.data.models.AppCategoryInfo
 import com.freelauncher.app.data.models.AppItem
-import com.freelauncher.app.data.service.ContactSearchResult
-import com.freelauncher.app.data.service.MessageSearchResult
 import com.freelauncher.app.data.service.SettingSearchResult
 import com.freelauncher.app.data.service.UniversalSearchManager
 import com.freelauncher.app.ui.util.DateTimeUtils
@@ -79,15 +76,56 @@ fun AllAppsScreen(
     onLongPressApp: (AppItem) -> Unit,
     onNavigate: (LauncherScreen) -> Unit,
     onSearchQueryChange: (String) -> Unit,
+    modifier: Modifier = Modifier,
+    iconPackManager: com.freelauncher.app.data.service.IconPackManager? = null,
     onOpenCategoryManager: () -> Unit = {},
     onOpenAddCategory: () -> Unit = {},
-    modifier: Modifier = Modifier
+) {
+    val isNeoMinimalUnlocked = state.isProUnlocked && state.appDrawerStyle == com.freelauncher.app.data.models.AppDrawerStyle.NEO_MINIMAL
+    if (isNeoMinimalUnlocked) {
+        NeoMinimalAppDrawer(
+            state = state,
+            onLaunchApp = onLaunchApp,
+            onLongPressApp = onLongPressApp,
+            onNavigate = onNavigate,
+            onSearchQueryChange = onSearchQueryChange,
+            modifier = modifier
+        )
+    } else {
+        ClassicAppDrawer(
+            state = state,
+            onLaunchApp = onLaunchApp,
+            onLongPressApp = onLongPressApp,
+            onNavigate = onNavigate,
+            onSearchQueryChange = onSearchQueryChange,
+            modifier = modifier,
+            iconPackManager = iconPackManager,
+            onOpenCategoryManager = onOpenCategoryManager,
+            onOpenAddCategory = onOpenAddCategory
+        )
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+fun ClassicAppDrawer(
+    state: LauncherUiState,
+    onLaunchApp: (AppItem) -> Unit,
+    onLongPressApp: (AppItem) -> Unit,
+    onNavigate: (LauncherScreen) -> Unit,
+    onSearchQueryChange: (String) -> Unit,
+    modifier: Modifier = Modifier,
+    iconPackManager: com.freelauncher.app.data.service.IconPackManager? = null,
+    onOpenCategoryManager: () -> Unit = {},
+    onOpenAddCategory: () -> Unit = {},
 ) {
     BackHandler {
         onNavigate(LauncherScreen.HOME)
     }
 
     val context = LocalContext.current
+    val configuration = LocalConfiguration.current
+    val isLandscape = configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
     var selectedCategoryFilterId by remember { mutableStateOf<String?>(null) }
     var totalDragY by remember { mutableFloatStateOf(0f) }
     var totalDragX by remember { mutableFloatStateOf(0f) }
@@ -101,26 +139,6 @@ fun AllAppsScreen(
         focusRequester.requestFocus()
         delay(120.milliseconds)
         keyboardController?.show()
-    }
-
-    // Permission launcher for contacts search
-    var hasContactsPerm by remember {
-        mutableStateOf(UniversalSearchManager.hasContactsPermission(context))
-    }
-    val contactsPermissionLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.RequestPermission()
-    ) { isGranted ->
-        hasContactsPerm = isGranted
-    }
-
-    // Permission launcher for SMS search
-    var hasSmsPerm by remember {
-        mutableStateOf(UniversalSearchManager.hasSmsPermission(context))
-    }
-    val smsPermissionLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.RequestPermission()
-    ) { isGranted ->
-        hasSmsPerm = isGranted
     }
 
     val isSearching = state.searchQuery.isNotBlank()
@@ -156,32 +174,6 @@ fun AllAppsScreen(
         }
     }
 
-    // 3. Universal Search: Contacts & Phone Dial
-    val matchingContacts = remember(state.searchQuery, hasContactsPerm) {
-        if (state.searchQuery.isNotBlank() && hasContactsPerm) {
-            UniversalSearchManager.searchContacts(context, state.searchQuery)
-        } else {
-            emptyList()
-        }
-    }
-
-    val isPhoneQuery = remember(state.searchQuery) {
-        UniversalSearchManager.isPhoneNumberQuery(state.searchQuery)
-    }
-    val isNumberInContacts = remember(state.searchQuery, matchingContacts) {
-        UniversalSearchManager.isNumberInContacts(state.searchQuery, matchingContacts)
-    }
-    val showQuickDial = isPhoneQuery && !isNumberInContacts
-
-    // 4. Universal Search: Messages
-    val matchingMessages = remember(state.searchQuery, hasSmsPerm) {
-        if (state.searchQuery.isNotBlank() && hasSmsPerm) {
-            UniversalSearchManager.searchMessages(context, state.searchQuery)
-        } else {
-            emptyList()
-        }
-    }
-
     val visibleCategories = remember(state.categories) {
         state.categories.filter { !it.isHidden }
     }
@@ -201,7 +193,7 @@ fun AllAppsScreen(
             .fillMaxSize()
             .statusBarsPadding()
             .navigationBarsPadding()
-            .padding(top = 44.dp)
+            .padding(top = if (isLandscape) 12.dp else 44.dp)
             .pointerInput(categoryFilterIds, selectedCategoryFilterId) {
                 detectDragGestures(
                     onDragStart = {
@@ -477,6 +469,10 @@ fun AllAppsScreen(
                         AllAppsRowItem(
                             app = app,
                             showMonogram = state.showMonograms,
+                            iconDisplayMode = state.iconDisplayMode,
+                            iconPackPackage = state.selectedIconPackPackage,
+                            iconPackManager = iconPackManager,
+                            minimalConfig = state.minimalIconPackConfig,
                             onClick = { onLaunchApp(app) },
                             onLongClick = { onLongPressApp(app) },
                             testTag = "search_app_item_${app.packageName}"
@@ -507,224 +503,12 @@ fun AllAppsScreen(
                                         context.startActivity(Intent(Settings.ACTION_SETTINGS).apply {
                                             flags = Intent.FLAG_ACTIVITY_NEW_TASK
                                         })
-                                    } catch (e2: Exception) {
-                                        android.util.Log.e("AllAppsScreen", "Failed to open settings", e2)
+                                    } catch (_: Exception) {
+                                        android.util.Log.e("AllAppsScreen", "Failed to open settings")
                                     }
                                 }
                             }
                         )
-                    }
-                }
-
-                // Section 3: Contacts & Quick Dial
-                if (matchingContacts.isNotEmpty() || showQuickDial) {
-                    item(key = "search_header_contacts") {
-                        val headerTitle = when {
-                            matchingContacts.isNotEmpty() -> "CONTACTS (${matchingContacts.size})"
-                            else -> "PHONE DIALER"
-                        }
-                        SearchSectionHeader(title = headerTitle)
-                    }
-                    if (matchingContacts.isNotEmpty()) {
-                        items(
-                            items = matchingContacts,
-                            key = { "contact_${it.id}_${it.phoneNumber}" }
-                        ) { contact ->
-                            ContactResultRowItem(
-                                contact = contact,
-                                onCall = {
-                                    try {
-                                        val callIntent = Intent(Intent.ACTION_DIAL).apply {
-                                            data = Uri.parse("tel:${contact.phoneNumber}")
-                                            flags = Intent.FLAG_ACTIVITY_NEW_TASK
-                                        }
-                                        context.startActivity(callIntent)
-                                    } catch (e: Exception) {
-                                        android.util.Log.e("AllAppsScreen", "Failed to call", e)
-                                    }
-                                },
-                                onMessage = {
-                                    try {
-                                        val smsIntent = Intent(Intent.ACTION_SENDTO).apply {
-                                            data = Uri.parse("smsto:${contact.phoneNumber}")
-                                            flags = Intent.FLAG_ACTIVITY_NEW_TASK
-                                        }
-                                        context.startActivity(smsIntent)
-                                    } catch (e: Exception) {
-                                        android.util.Log.e("AllAppsScreen", "Failed to call", e)
-                                    }
-                                },
-                                onWhatsApp = {
-                                    try {
-                                        val cleanNumber = contact.phoneNumber.replace(Regex("[^0-9]"), "")
-                                        val whatsappIntent = Intent(Intent.ACTION_VIEW).apply {
-                                            data = Uri.parse("https://api.whatsapp.com/send?phone=$cleanNumber")
-                                            flags = Intent.FLAG_ACTIVITY_NEW_TASK
-                                        }
-                                        context.startActivity(whatsappIntent)
-                                    } catch (e: Exception) {
-                                        android.util.Log.e("AllAppsScreen", "Failed to call", e)
-                                    }
-                                }
-                            )
-                        }
-                    }
-                    if (showQuickDial) {
-                        item(key = "quick_dial_number") {
-                            DialActionRowItem(
-                                phoneNumber = state.searchQuery,
-                                onDial = {
-                                    try {
-                                        val callIntent = Intent(Intent.ACTION_DIAL).apply {
-                                            data = Uri.parse("tel:${Uri.encode(state.searchQuery)}")
-                                            flags = Intent.FLAG_ACTIVITY_NEW_TASK
-                                        }
-                                        context.startActivity(callIntent)
-                                    } catch (e: Exception) {
-                                        android.util.Log.e("AllAppsScreen", "Failed to call", e)
-                                    }
-                                },
-                                onWhatsApp = {
-                                    try {
-                                        val cleanNumber = state.searchQuery.replace(Regex("[^0-9]"), "")
-                                        val whatsappIntent = Intent(Intent.ACTION_VIEW).apply {
-                                            data = Uri.parse("https://api.whatsapp.com/send?phone=$cleanNumber")
-                                            flags = Intent.FLAG_ACTIVITY_NEW_TASK
-                                        }
-                                        context.startActivity(whatsappIntent)
-                                    } catch (e: Exception) {
-                                        android.util.Log.e("AllAppsScreen", "Failed to call", e)
-                                    }
-                                }
-                            )
-                        }
-                    }
-                } else if (!hasContactsPerm) {
-                    // Discreet affordance to enable contacts search
-                    item(key = "enable_contacts_search") {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 8.dp)
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f))
-                                .clickable {
-                                    contactsPermissionLauncher.launch(android.Manifest.permission.READ_CONTACTS)
-                                }
-                                .padding(horizontal = 14.dp, vertical = 10.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(10.dp)
-                            ) {
-                                Icon(
-                                    Icons.Outlined.Person,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.secondary,
-                                    modifier = Modifier.size(18.dp)
-                                )
-                                Text(
-                                    text = "Enable Contacts in Universal Search",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                            Text(
-                                text = "ALLOW",
-                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
-                                color = MaterialTheme.colorScheme.primary
-                            )
-                        }
-                    }
-                }
-
-                // Section 4: Messages & SMS Quick Actions
-                item(key = "search_header_messages") {
-                    SearchSectionHeader(
-                        title = "MESSAGES",
-                        subtitle = "PROCESSED LOCALLY"
-                    )
-                }
-
-                // Quick Send SMS / Compose Message item
-                item(key = "quick_compose_message") {
-                    MessageActionRowItem(
-                        title = "Send message to \"${state.searchQuery}\"",
-                        subtitle = "Compose text message",
-                        onClick = {
-                            try {
-                                val smsIntent = Intent(Intent.ACTION_SENDTO).apply {
-                                    data = Uri.parse("smsto:${state.searchQuery}")
-                                    flags = Intent.FLAG_ACTIVITY_NEW_TASK
-                                }
-                                context.startActivity(smsIntent)
-                            } catch (e: Exception) {
-                                android.util.Log.e("AllAppsScreen", "Failed to send SMS", e)
-                            }
-                        }
-                    )
-                }
-
-                if (matchingMessages.isNotEmpty()) {
-                    items(
-                        items = matchingMessages,
-                        key = { "msg_${it.id}" }
-                    ) { msg ->
-                        MessageItemRow(
-                            message = msg,
-                            onClick = {
-                                try {
-                                    val smsIntent = Intent(Intent.ACTION_VIEW).apply {
-                                        data = Uri.parse("smsto:${msg.address}")
-                                        flags = Intent.FLAG_ACTIVITY_NEW_TASK
-                                    }
-                                    context.startActivity(smsIntent)
-                                } catch (e: Exception) {
-                                android.util.Log.e("AllAppsScreen", "Failed to open message", e)
-                            }
-                            }
-                        )
-                    }
-                } else if (!hasSmsPerm) {
-                    // Prominent affordance to enable message search
-                    item(key = "enable_sms_search") {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 8.dp)
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f))
-                                .clickable {
-                                    smsPermissionLauncher.launch(android.Manifest.permission.READ_SMS)
-                                }
-                                .padding(horizontal = 14.dp, vertical = 10.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(10.dp)
-                            ) {
-                                Icon(
-                                    Icons.AutoMirrored.Outlined.Message,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.secondary,
-                                    modifier = Modifier.size(18.dp)
-                                )
-                                Text(
-                                    text = "Enable Message Search",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                            Text(
-                                text = "ALLOW",
-                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
-                                color = MaterialTheme.colorScheme.primary
-                            )
-                        }
                     }
                 }
 
@@ -753,8 +537,8 @@ fun AllAppsScreen(
                                             flags = Intent.FLAG_ACTIVITY_NEW_TASK
                                         }
                                         context.startActivity(browserIntent)
-                                    } catch (e2: Exception) {
-                                        android.util.Log.e("AllAppsScreen", "Failed to open settings", e2)
+                                    } catch (_: Exception) {
+                                        android.util.Log.e("AllAppsScreen", "Failed to open settings")
                                     }
                                 }
                             }
@@ -805,8 +589,8 @@ fun AllAppsScreen(
                                 } catch (e: Exception) {
                                     try {
                                         context.startActivity(UniversalSearchManager.getYouTubeWebSearchIntent(state.searchQuery))
-                                    } catch (e2: Exception) {
-                                        android.util.Log.e("AllAppsScreen", "Failed to open settings", e2)
+                                    } catch (_: Exception) {
+                                        android.util.Log.e("AllAppsScreen", "Failed to open settings")
                                     }
                                 }
                             }
@@ -864,18 +648,54 @@ fun AllAppsScreen(
                         }
                     }
                 } else if (selectedCategoryFilterId == null) {
-                    // WHEN NO CATEGORY IS SELECTED: Show all apps strictly alphabetically (A-Z) without category section headers
-                    items(
-                        items = matchingApps,
-                        key = { it.id.ifBlank { "${it.packageName}/${it.activityName}#${it.label}" } }
-                    ) { app ->
-                        AllAppsRowItem(
-                            app = app,
-                            showMonogram = state.showMonograms,
-                            onClick = { onLaunchApp(app) },
-                            onLongClick = { onLongPressApp(app) },
-                            testTag = "app_item_${app.packageName}"
-                        )
+                    // WHEN NO CATEGORY IS SELECTED: Show all apps strictly alphabetically (A-Z)
+                    if (isLandscape && !isSearching) {
+                        val appRows = matchingApps.chunked(2)
+                        items(
+                            items = appRows,
+                            key = { row -> row.first().id.ifBlank { "${row.first().packageName}/${row.first().activityName}" } }
+                        ) { rowApps ->
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(16.dp)
+                            ) {
+                                rowApps.forEach { app ->
+                                    AllAppsRowItem(
+                                        app = app,
+                                        showMonogram = state.showMonograms,
+                                        iconDisplayMode = state.iconDisplayMode,
+                                        iconPackPackage = state.selectedIconPackPackage,
+                                        iconPackManager = iconPackManager,
+                                        minimalConfig = state.minimalIconPackConfig,
+                                        onClick = { onLaunchApp(app) },
+                                        onLongClick = { onLongPressApp(app) },
+                                        testTag = "app_item_${app.packageName}",
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                }
+                                if (rowApps.size == 1) {
+                                    Spacer(modifier = Modifier.weight(1f))
+                                }
+                            }
+                        }
+                    } else {
+                        items(
+                            items = matchingApps,
+                            key = { it.id.ifBlank { "${it.packageName}/${it.activityName}#${it.label}" } }
+                        ) { app ->
+                            AllAppsRowItem(
+                                app = app,
+                                showMonogram = state.showMonograms,
+                                iconDisplayMode = state.iconDisplayMode,
+                                iconPackPackage = state.selectedIconPackPackage,
+                                iconPackManager = iconPackManager,
+                                minimalConfig = state.minimalIconPackConfig,
+                                alignment = state.allAppsAlignment,
+                                onClick = { onLaunchApp(app) },
+                                onLongClick = { onLongPressApp(app) },
+                                testTag = "app_item_${app.packageName}"
+                            )
+                        }
                     }
                 } else {
                     // WHEN A SPECIFIC CATEGORY IS SELECTED: Show header for that category followed by its apps
@@ -903,17 +723,54 @@ fun AllAppsScreen(
                         }
                     }
 
-                    items(
-                        items = matchingApps,
-                        key = { it.id.ifBlank { "${it.packageName}/${it.activityName}#${it.label}" } }
-                    ) { app ->
-                        AllAppsRowItem(
-                            app = app,
-                            showMonogram = state.showMonograms,
-                            onClick = { onLaunchApp(app) },
-                            onLongClick = { onLongPressApp(app) },
-                            testTag = "app_item_${app.packageName}"
-                        )
+                    if (isLandscape && !isSearching) {
+                        val appRows = matchingApps.chunked(2)
+                        items(
+                            items = appRows,
+                            key = { row -> row.first().id.ifBlank { "${row.first().packageName}/${row.first().activityName}" } }
+                        ) { rowApps ->
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(16.dp)
+                            ) {
+                                rowApps.forEach { app ->
+                                    AllAppsRowItem(
+                                        app = app,
+                                        showMonogram = state.showMonograms,
+                                        iconDisplayMode = state.iconDisplayMode,
+                                        iconPackPackage = state.selectedIconPackPackage,
+                                        iconPackManager = iconPackManager,
+                                        minimalConfig = state.minimalIconPackConfig,
+                                        alignment = state.allAppsAlignment,
+                                        onClick = { onLaunchApp(app) },
+                                        onLongClick = { onLongPressApp(app) },
+                                        testTag = "app_item_${app.packageName}",
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                }
+                                if (rowApps.size == 1) {
+                                    Spacer(modifier = Modifier.weight(1f))
+                                }
+                            }
+                        }
+                    } else {
+                        items(
+                            items = matchingApps,
+                            key = { it.id.ifBlank { "${it.packageName}/${it.activityName}#${it.label}" } }
+                        ) { app ->
+                            AllAppsRowItem(
+                                app = app,
+                                showMonogram = state.showMonograms,
+                                iconDisplayMode = state.iconDisplayMode,
+                                iconPackPackage = state.selectedIconPackPackage,
+                                iconPackManager = iconPackManager,
+                                minimalConfig = state.minimalIconPackConfig,
+                                alignment = state.allAppsAlignment,
+                                onClick = { onLaunchApp(app) },
+                                onLongClick = { onLongPressApp(app) },
+                                testTag = "app_item_${app.packageName}"
+                            )
+                        }
                     }
                 }
             }
@@ -1016,304 +873,7 @@ fun SettingResultRowItem(
     }
 }
 
-@Composable
-fun ContactResultRowItem(
-    contact: ContactSearchResult,
-    onCall: () -> Unit,
-    onMessage: () -> Unit,
-    onWhatsApp: () -> Unit
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(6.dp))
-            .clickable(onClick = onCall)
-            .padding(vertical = 8.dp, horizontal = 4.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween
-    ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.weight(1f),
-            horizontalArrangement = Arrangement.spacedBy(14.dp)
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(34.dp)
-                    .clip(RoundedCornerShape(6.dp))
-                    .border(
-                        0.75.dp,
-                        MaterialTheme.colorScheme.outline.copy(alpha = 0.4f),
-                        RoundedCornerShape(6.dp)
-                    )
-                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = contact.name.take(2).uppercase(Locale.ROOT),
-                    style = MaterialTheme.typography.labelSmall.copy(
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 12.sp
-                    ),
-                    color = MaterialTheme.colorScheme.onBackground
-                )
-            }
 
-            Column {
-                Text(
-                    text = contact.name,
-                    style = MaterialTheme.typography.bodyLarge.copy(
-                        fontSize = 17.sp,
-                        fontWeight = FontWeight.Normal
-                    ),
-                    color = MaterialTheme.colorScheme.onBackground
-                )
-                Text(
-                    text = contact.phoneNumber,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.secondary.copy(alpha = 0.8f)
-                )
-            }
-        }
-
-        Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-            IconButton(
-                onClick = onCall,
-                modifier = Modifier.size(34.dp)
-            ) {
-                Icon(
-                    imageVector = Icons.Outlined.Call,
-                    contentDescription = "Call",
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(18.dp)
-                )
-            }
-            IconButton(
-                onClick = onMessage,
-                modifier = Modifier.size(34.dp)
-            ) {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Outlined.Message,
-                    contentDescription = "Message",
-                    tint = MaterialTheme.colorScheme.secondary,
-                    modifier = Modifier.size(18.dp)
-                )
-            }
-            IconButton(
-                onClick = onWhatsApp,
-                modifier = Modifier.size(34.dp)
-            ) {
-                Icon(
-                    painter = painterResource(id = R.drawable.ic_whatsapp),
-                    contentDescription = "WhatsApp",
-                    tint = Color.Unspecified,
-                    modifier = Modifier.size(20.dp)
-                )
-            }
-        }
-    }
-}
-
-@Composable
-fun DialActionRowItem(
-    phoneNumber: String,
-    onDial: () -> Unit,
-    onWhatsApp: () -> Unit
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(6.dp))
-            .clickable(onClick = onDial)
-            .padding(vertical = 8.dp, horizontal = 4.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween
-    ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.weight(1f),
-            horizontalArrangement = Arrangement.spacedBy(14.dp)
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(34.dp)
-                    .clip(RoundedCornerShape(6.dp))
-                    .border(
-                        0.75.dp,
-                        MaterialTheme.colorScheme.outline.copy(alpha = 0.4f),
-                        RoundedCornerShape(6.dp)
-                    )
-                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = Icons.Outlined.Call,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(18.dp)
-                )
-            }
-
-            Column {
-                Text(
-                    text = "Dial \"$phoneNumber\"",
-                    style = MaterialTheme.typography.bodyLarge.copy(
-                        fontSize = 17.sp,
-                        fontWeight = FontWeight.Normal
-                    ),
-                    color = MaterialTheme.colorScheme.onBackground
-                )
-                Text(
-                    text = "Not in contacts • Tap to call",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.secondary.copy(alpha = 0.8f)
-                )
-            }
-        }
-
-        Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-            IconButton(
-                onClick = onDial,
-                modifier = Modifier.size(34.dp)
-            ) {
-                Icon(
-                    imageVector = Icons.Outlined.Call,
-                    contentDescription = "Dial",
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(18.dp)
-                )
-            }
-            IconButton(
-                onClick = onWhatsApp,
-                modifier = Modifier.size(34.dp)
-            ) {
-                Icon(
-                    painter = painterResource(id = R.drawable.ic_whatsapp),
-                    contentDescription = "WhatsApp",
-                    tint = Color.Unspecified,
-                    modifier = Modifier.size(20.dp)
-                )
-            }
-        }
-    }
-}
-
-@Composable
-fun MessageActionRowItem(
-    title: String,
-    subtitle: String,
-    onClick: () -> Unit
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(6.dp))
-            .clickable(onClick = onClick)
-            .padding(vertical = 10.dp, horizontal = 4.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(14.dp)
-    ) {
-        Box(
-            modifier = Modifier
-                .size(34.dp)
-                .clip(RoundedCornerShape(6.dp))
-                .border(
-                    0.75.dp,
-                    MaterialTheme.colorScheme.outline.copy(alpha = 0.4f),
-                    RoundedCornerShape(6.dp)
-                )
-                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(
-                imageVector = Icons.AutoMirrored.Outlined.Message,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(18.dp)
-            )
-        }
-
-        Column {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.bodyMedium.copy(
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.Normal
-                ),
-                color = MaterialTheme.colorScheme.onBackground
-            )
-            Text(
-                text = subtitle,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.secondary.copy(alpha = 0.8f)
-            )
-        }
-    }
-}
-
-@Composable
-fun MessageItemRow(
-    message: MessageSearchResult,
-    onClick: () -> Unit
-) {
-    val dateStr = remember(message.date) {
-        if (message.date > 0) {
-            DateTimeUtils.format(java.util.Date(message.date), DateTimeUtils.Patterns.DATE_MMM_D_HM_A)
-        } else ""
-    }
-
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(6.dp))
-            .clickable(onClick = onClick)
-            .padding(vertical = 8.dp, horizontal = 4.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(14.dp)
-    ) {
-        Box(
-            modifier = Modifier
-                .size(34.dp)
-                .clip(RoundedCornerShape(6.dp))
-                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(
-                imageVector = Icons.Outlined.Message,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.secondary,
-                modifier = Modifier.size(16.dp)
-            )
-        }
-
-        Column(modifier = Modifier.weight(1f)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Text(
-                    text = message.senderOrRecipient,
-                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
-                    color = MaterialTheme.colorScheme.onBackground
-                )
-                if (dateStr.isNotBlank()) {
-                    Text(
-                        text = dateStr,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.secondary.copy(alpha = 0.7f)
-                    )
-                }
-            }
-            Text(
-                text = message.snippet,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.secondary.copy(alpha = 0.85f),
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis
-            )
-        }
-    }
-}
 
 @Composable
 fun CategoryChip(
@@ -1359,11 +919,27 @@ fun CategoryChip(
 fun AllAppsRowItem(
     app: AppItem,
     showMonogram: Boolean,
+    iconDisplayMode: com.freelauncher.app.data.models.IconDisplayMode = com.freelauncher.app.data.models.IconDisplayMode.TEXT_ONLY,
+    iconPackPackage: String = "",
+    iconPackManager: com.freelauncher.app.data.service.IconPackManager? = null,
+    minimalConfig: com.freelauncher.app.data.models.MinimalIconPackConfig = com.freelauncher.app.data.models.MinimalIconPackConfig(),
+    alignment: com.freelauncher.app.data.models.AllAppsAlignment = com.freelauncher.app.data.models.AllAppsAlignment.LEFT,
     onClick: () -> Unit,
     onLongClick: () -> Unit,
     testTag: String,
     modifier: Modifier = Modifier
 ) {
+    val rowArrangement = when (alignment) {
+        com.freelauncher.app.data.models.AllAppsAlignment.LEFT -> Arrangement.Start
+        com.freelauncher.app.data.models.AllAppsAlignment.CENTER -> Arrangement.Center
+        com.freelauncher.app.data.models.AllAppsAlignment.RIGHT -> Arrangement.End
+    }
+    val textAlignment = when (alignment) {
+        com.freelauncher.app.data.models.AllAppsAlignment.LEFT -> TextAlign.Start
+        com.freelauncher.app.data.models.AllAppsAlignment.CENTER -> TextAlign.Center
+        com.freelauncher.app.data.models.AllAppsAlignment.RIGHT -> TextAlign.End
+    }
+
     Row(
         modifier = modifier
             .fillMaxWidth()
@@ -1379,31 +955,19 @@ fun AllAppsRowItem(
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = rowArrangement,
             modifier = Modifier.weight(1f)
         ) {
-            if (showMonogram) {
-                Box(
-                    modifier = Modifier
-                        .size(32.dp)
-                        .clip(RoundedCornerShape(6.dp))
-                        .border(
-                            0.75.dp,
-                            MaterialTheme.colorScheme.outline.copy(alpha = 0.4f),
-                            RoundedCornerShape(6.dp)
-                        )
-                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = app.monogram,
-                        style = MaterialTheme.typography.labelSmall.copy(
-                            fontWeight = FontWeight.SemiBold,
-                            fontSize = 12.sp,
-                            letterSpacing = 0.5.sp
-                        ),
-                        color = MaterialTheme.colorScheme.onBackground
-                    )
-                }
+            val shouldShowIcon = iconDisplayMode != com.freelauncher.app.data.models.IconDisplayMode.TEXT_ONLY
+            if (shouldShowIcon) {
+                com.freelauncher.app.ui.components.AppIcon(
+                    app = app,
+                    mode = iconDisplayMode,
+                    iconPackPackage = iconPackPackage,
+                    iconPackManager = iconPackManager,
+                    minimalConfig = minimalConfig,
+                    size = 32.dp
+                )
                 Spacer(modifier = Modifier.width(14.dp))
             }
 
@@ -1412,7 +976,8 @@ fun AllAppsRowItem(
                 style = MaterialTheme.typography.bodyLarge.copy(
                     fontSize = 18.sp,
                     fontWeight = FontWeight.Normal,
-                    letterSpacing = 0.2.sp
+                    letterSpacing = 0.2.sp,
+                    textAlign = textAlignment
                 ),
                 color = MaterialTheme.colorScheme.onBackground
             )

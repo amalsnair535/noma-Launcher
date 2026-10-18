@@ -200,6 +200,18 @@ fun AboutSheet(
                                 onOpenUrl("https://buymeacoffee.com/amalsnair535")
                             }
                         )
+
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.15f))
+
+                        AboutActionItem(
+                            icon = Icons.Outlined.Groups,
+                            title = "Reddit Community (r/noma_launcher)",
+                            subtitle = "Join discussion, share setups & request features",
+                            onClick = {
+                                LauncherHaptics.playClick(context)
+                                onOpenUrl("https://www.reddit.com/r/noma_launcher")
+                            }
+                        )
                     }
                 }
             }

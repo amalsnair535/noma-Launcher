@@ -39,7 +39,9 @@ fun PinAppDialog(
     onDismiss: () -> Unit,
     onConfirmPin: (AppItem) -> Unit,
     onConfirmUnpin: (AppItem) -> Unit,
-    onSetCategory: (packageName: String, categoryId: String) -> Unit = { _, _ -> }
+    onSetCategory: (packageName: String, categoryId: String) -> Unit = { _, _ -> },
+    allAppsAlignment: com.freelauncher.app.data.models.AllAppsAlignment = com.freelauncher.app.data.models.AllAppsAlignment.CENTER,
+    onAllAppsAlignmentChanged: (com.freelauncher.app.data.models.AllAppsAlignment) -> Unit = {}
 ) {
     val context = LocalContext.current
     var selectedCategoryId by remember(app) { mutableStateOf(app.categoryId.ifBlank { app.category.name }) }
@@ -236,7 +238,72 @@ fun PinAppDialog(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(22.dp))
+                // All Apps Drawer Alignment Section
+                Spacer(modifier = Modifier.height(16.dp))
+                HorizontalDivider(
+                    modifier = Modifier.fillMaxWidth(0.9f),
+                    color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)
+                )
+                Spacer(modifier = Modifier.height(14.dp))
+
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalAlignment = Alignment.Start,
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(
+                        text = "DRAWER ALIGNMENT",
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = 1.sp
+                        ),
+                        color = MaterialTheme.colorScheme.secondary
+                    )
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        com.freelauncher.app.data.models.AllAppsAlignment.entries.forEach { alignOpt ->
+                            val isSelected = alignOpt == allAppsAlignment
+                            Surface(
+                                shape = RoundedCornerShape(10.dp),
+                                color = if (isSelected) MaterialTheme.colorScheme.primary
+                                       else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .border(
+                                        0.75.dp,
+                                        if (isSelected) MaterialTheme.colorScheme.primary
+                                        else MaterialTheme.colorScheme.outline.copy(alpha = 0.3f),
+                                        RoundedCornerShape(10.dp)
+                                    )
+                                    .clickable {
+                                        LauncherHaptics.playClick(context)
+                                        onAllAppsAlignmentChanged(alignOpt)
+                                    }
+                            ) {
+                                Box(
+                                    modifier = Modifier.padding(vertical = 8.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = alignOpt.displayName,
+                                        style = MaterialTheme.typography.labelMedium.copy(
+                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                            fontSize = 12.sp
+                                        ),
+                                        color = if (isSelected) MaterialTheme.colorScheme.onPrimary
+                                               else MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(20.dp))
 
                 // Action Buttons
                 Row(
@@ -295,10 +362,15 @@ fun PinAppDialog(
                         Text(
                             text = when {
                                 isAlreadyPinned -> "Unpin"
-                                pinnedCount >= maxSlots -> "Pin (Replace #6)"
+                                pinnedCount >= maxSlots -> "Replace #6"
                                 else -> "Pin"
                             },
-                            style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold)
+                            style = MaterialTheme.typography.labelLarge.copy(
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 13.sp
+                            ),
+                            maxLines = 1,
+                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                         )
                     }
                 }

@@ -2,6 +2,7 @@ package com.freelauncher.app.ui.components
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -30,6 +31,8 @@ import com.freelauncher.app.ui.util.LauncherHaptics
 @Composable
 fun RearrangePinnedDialog(
     pinnedApps: List<AppItem>,
+    currentAlignment: com.freelauncher.app.data.models.SixAppsAlignment = com.freelauncher.app.data.models.SixAppsAlignment.LEFT,
+    onSixAppsAlignmentChanged: (com.freelauncher.app.data.models.SixAppsAlignment) -> Unit = {},
     onMoveUp: (String) -> Unit,
     onMoveDown: (String) -> Unit,
     onUnpin: (AppItem) -> Unit,
@@ -232,6 +235,56 @@ fun RearrangePinnedDialog(
                                             )
                                         }
                                     }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                // App List Alignment Selection Section
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Text(
+                        text = "App List Alignment",
+                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        com.freelauncher.app.data.models.SixAppsAlignment.entries.forEach { alignOpt ->
+                            val isSelected = alignOpt == currentAlignment
+                            Surface(
+                                shape = RoundedCornerShape(10.dp),
+                                color = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                                border = androidx.compose.foundation.BorderStroke(
+                                    if (isSelected) 1.5.dp else 0.75.dp,
+                                    if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)
+                                ),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clickable {
+                                        LauncherHaptics.playClick(context)
+                                        onSixAppsAlignmentChanged(alignOpt)
+                                    }
+                            ) {
+                                Box(
+                                    modifier = Modifier.padding(vertical = 8.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = alignOpt.displayName,
+                                        style = MaterialTheme.typography.labelMedium.copy(
+                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
+                                        ),
+                                        color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
                                 }
                             }
                         }

@@ -13,7 +13,8 @@ enum class LauncherFont(val id: String, val displayName: String, val fontFamily:
     MONOSPACE("monospace", "Monospace", FontFamily.Monospace, FontWeight.Normal),
     CONDENSED("condensed", "Condensed", FontFamily.SansSerif, FontWeight.Normal),
     SERIF("serif", "Serif", FontFamily.Serif, FontWeight.Normal),
-    THIN_ELEGANT("thin", "Thin / Elegant", FontFamily.SansSerif, FontWeight.Light)
+    THIN_ELEGANT("thin", "Thin / Elegant", FontFamily.SansSerif, FontWeight.Light),
+    SEGOE_WP("segoe_wp", "Segoe WP (Metro)", FontFamily(android.graphics.Typeface.create("sans-serif-condensed", android.graphics.Typeface.NORMAL)), FontWeight.Light)
 }
 
 val LocalLauncherFont = compositionLocalOf { LauncherFont.MINIMAL_SANS }
@@ -25,17 +26,17 @@ fun getTypographyForFont(launcherFont: LauncherFont): Typography {
     return Typography(
         displayLarge = TextStyle(
             fontFamily = family,
-            fontWeight = if (launcherFont == LauncherFont.THIN_ELEGANT) FontWeight.ExtraLight else FontWeight.Light,
+            fontWeight = if (launcherFont == LauncherFont.THIN_ELEGANT || launcherFont == LauncherFont.SEGOE_WP) FontWeight.ExtraLight else FontWeight.Light,
             fontSize = 58.sp,
             lineHeight = 66.sp,
-            letterSpacing = if (launcherFont == LauncherFont.CONDENSED) (-1.5).sp else (-0.5).sp
+            letterSpacing = if (launcherFont == LauncherFont.CONDENSED) (-1.5).sp else if (launcherFont == LauncherFont.SEGOE_WP) (-0.8).sp else (-0.5).sp
         ),
         displayMedium = TextStyle(
             fontFamily = family,
-            fontWeight = if (launcherFont == LauncherFont.THIN_ELEGANT) FontWeight.Light else FontWeight.Normal,
+            fontWeight = if (launcherFont == LauncherFont.THIN_ELEGANT || launcherFont == LauncherFont.SEGOE_WP) FontWeight.Light else FontWeight.Normal,
             fontSize = 44.sp,
             lineHeight = 52.sp,
-            letterSpacing = if (launcherFont == LauncherFont.CONDENSED) (-1).sp else 0.sp
+            letterSpacing = if (launcherFont == LauncherFont.CONDENSED) (-1).sp else if (launcherFont == LauncherFont.SEGOE_WP) (-0.5).sp else 0.sp
         ),
         displaySmall = TextStyle(
             fontFamily = family,

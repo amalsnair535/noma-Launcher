@@ -50,10 +50,7 @@ class WeatherService(
         private const val LOCATION_CACHE_DURATION = 6 * 60 * 60 * 1000L
     }
 
-    private val client = OkHttpClient.Builder()
-        .connectTimeout(8, TimeUnit.SECONDS)
-        .readTimeout(8, TimeUnit.SECONDS)
-        .build()
+    private val client = NetworkClientModule.sharedOkHttpClient
 
     private val fusedLocationClient =
         LocationServices.getFusedLocationProviderClient(context)

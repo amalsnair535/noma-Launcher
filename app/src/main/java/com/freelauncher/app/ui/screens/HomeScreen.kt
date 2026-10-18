@@ -31,7 +31,6 @@ import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalView
-import android.view.View
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -45,7 +44,6 @@ import com.freelauncher.app.ui.util.DateTimeUtils
 import com.freelauncher.app.ui.util.LauncherHaptics
 import com.freelauncher.app.ui.viewmodel.LauncherScreen
 import com.freelauncher.app.ui.viewmodel.LauncherUiState
-import java.text.SimpleDateFormat
 import java.util.*
 import kotlin.math.abs
 import kotlin.math.roundToInt
@@ -57,12 +55,12 @@ fun HomeScreen(
     currentTime: Date,
     onNavigate: (LauncherScreen) -> Unit,
     onOpenSettings: () -> Unit,
+    modifier: Modifier = Modifier,
     onOpenSearch: () -> Unit = {},
     onOpenDialer: () -> Unit = {},
     onOpenClock: () -> Unit = {},
     onOpenCalendar: () -> Unit = {},
     onDoubleTapToSleep: () -> Unit = {},
-    modifier: Modifier = Modifier,
     onClockStyleChanged: (ClockStyle) -> Unit = {},
     onTimeCardOffsetChanged: (Float, Float) -> Unit = { _, _ -> },
     onResetTimeCardOffset: () -> Unit = {},
@@ -88,6 +86,9 @@ fun HomeScreen(
         }
     }
 
+    val configuration = androidx.compose.ui.platform.LocalConfiguration.current
+    val isLandscape = configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
+
     var totalDragX by remember { mutableFloatStateOf(0f) }
     var totalDragY by remember { mutableFloatStateOf(0f) }
 
@@ -104,11 +105,12 @@ fun HomeScreen(
     val latestStyleIndex by rememberUpdatedState(currentStyleIndex)
 
     val isEditMode = state.isClockEditMode
-    val clockAnimScale by animateFloatAsState(
+    val rawClockAnimScale by animateFloatAsState(
         targetValue = state.timeCardScale * (if (isDraggingCard) 1.06f else if (isEditMode) 1.02f else 1f),
         animationSpec = spring(),
         label = "clock_edit_scale",
     )
+    val clockAnimScale = if (isLandscape) rawClockAnimScale.coerceAtMost(0.85f) else rawClockAnimScale
 
     // Active edit tab state in edit mode (0: Style, 1: Resize)
     var editTab by remember { mutableIntStateOf(0) }
@@ -119,7 +121,7 @@ fun HomeScreen(
         if (android.os.Build.VERSION.SDK_INT >= 35) { // Android 15+
             try {
                 currentView.requestedFrameRate = 120f
-            } catch (e: Exception) { /* Fallback */ }
+            } catch (_: Exception) { /* Fallback */ }
         }
     }
 
@@ -127,18 +129,25 @@ fun HomeScreen(
     var rootTapCount by remember { mutableIntStateOf(0) }
     var lastRootTapTime by remember { mutableLongStateOf(0L) }
 
+    val windowInfo = androidx.compose.ui.platform.LocalWindowInfo.current
+    val screenWidthPx = windowInfo.containerSize.width.toFloat()
+
     Box(
         modifier = modifier
             .fillMaxSize()
             .navigationBarsPadding()
-            .pointerInput(isEditMode) {
+            .pointerInput(isEditMode, screenWidthPx) {
                 if (!isEditMode) {
+                    var isStartedInSafeZone = true
                     detectDragGestures(
-                        onDragStart = {
+                        onDragStart = { startOffset ->
                             totalDragX = 0f
                             totalDragY = 0f
+                            val gestureEdgeMargin = 32.dp.toPx()
+                            isStartedInSafeZone = startOffset.x in gestureEdgeMargin..(screenWidthPx - gestureEdgeMargin)
                         },
                         onDragEnd = {
+                            if (!isStartedInSafeZone) return@detectDragGestures
                             val threshold = 60f
                             if (abs(totalDragX) > abs(totalDragY)) {
                                 // Horizontal Swipe
@@ -161,9 +170,11 @@ fun HomeScreen(
                             }
                         }
                     ) { change, dragAmount ->
-                        change.consume()
-                        totalDragX += dragAmount.x
-                        totalDragY += dragAmount.y
+                        if (isStartedInSafeZone) {
+                            change.consume()
+                            totalDragX += dragAmount.x
+                            totalDragY += dragAmount.y
+                        }
                     }
                 }
             }
@@ -270,43 +281,44 @@ fun HomeScreen(
         }
 
         // Main Time Card Container with Free Movement / Drag Offset & Scaling
-        Box(
-            modifier = Modifier
-                .align(Alignment.Center)
-                .offset {
-                    IntOffset(localOffsetX.roundToInt(), localOffsetY.roundToInt())
-                }
-                .pointerInput(isEditMode) {
-                    if (isEditMode) {
-                        detectDragGestures(
-                            onDragStart = {
-                                isDraggingCard = true
-                            },
-                            onDragEnd = {
-                                isDraggingCard = false
-                                onTimeCardOffsetChanged(localOffsetX, localOffsetY)
-                            },
-                            onDragCancel = {
-                                isDraggingCard = false
-                                onTimeCardOffsetChanged(localOffsetX, localOffsetY)
+        if (!state.hideEverythingOnHome || isEditMode) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .offset {
+                        IntOffset(localOffsetX.roundToInt(), localOffsetY.roundToInt())
+                    }
+                    .pointerInput(isEditMode) {
+                        if (isEditMode) {
+                            detectDragGestures(
+                                onDragStart = {
+                                    isDraggingCard = true
+                                },
+                                onDragEnd = {
+                                    isDraggingCard = false
+                                    onTimeCardOffsetChanged(localOffsetX, localOffsetY)
+                                },
+                                onDragCancel = {
+                                    isDraggingCard = false
+                                    onTimeCardOffsetChanged(localOffsetX, localOffsetY)
+                                }
+                            ) { change, dragAmount ->
+                                change.consume()
+                                localOffsetX += dragAmount.x
+                                localOffsetY += dragAmount.y
                             }
-                        ) { change, dragAmount ->
-                            change.consume()
-                            localOffsetX += dragAmount.x
-                            localOffsetY += dragAmount.y
                         }
                     }
-                }
-                .testTag("time_card_moveable_container")
-        ) {
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center,
-                modifier = Modifier
-                    .wrapContentSize()
-                    .padding(horizontal = 12.dp)
+                    .testTag("time_card_moveable_container")
             ) {
-                // Interactive Clock Card
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center,
+                    modifier = Modifier
+                        .wrapContentSize()
+                        .padding(horizontal = 12.dp)
+                ) {
+                    // Interactive Clock Card
                 Box(
                     modifier = Modifier
                         .scale(clockAnimScale)
@@ -531,6 +543,7 @@ fun HomeScreen(
                             .scale(clockAnimScale.coerceAtMost(1.1f))
                             .testTag("home_phone_free_today_text")
                     )
+                }
                 }
             }
         }
