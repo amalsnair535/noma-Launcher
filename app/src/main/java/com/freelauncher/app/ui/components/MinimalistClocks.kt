@@ -32,6 +32,7 @@ import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.toArgb
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.Spring
@@ -78,10 +79,12 @@ enum class TimeCardHorizontalAlign(val id: String, val displayName: String) {
 
 @Composable
 fun MinimalistClock(
-    currentTime: Date,
+    timeFlow: kotlinx.coroutines.flow.StateFlow<Date>,
     clockStyle: ClockStyle,
     modifier: Modifier = Modifier
 ) {
+    val currentTime by timeFlow.collectAsStateWithLifecycle()
+    
     Box(
         modifier = modifier,
         contentAlignment = Alignment.Center

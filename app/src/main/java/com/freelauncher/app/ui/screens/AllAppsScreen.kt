@@ -81,8 +81,7 @@ fun AllAppsScreen(
     onOpenCategoryManager: () -> Unit = {},
     onOpenAddCategory: () -> Unit = {},
 ) {
-    val isNeoMinimalUnlocked = state.isProUnlocked && state.appDrawerStyle == com.freelauncher.app.data.models.AppDrawerStyle.NEO_MINIMAL
-    if (isNeoMinimalUnlocked) {
+    if (state.appDrawerStyle == com.freelauncher.app.data.models.AppDrawerStyle.NEO_MINIMAL) {
         NeoMinimalAppDrawer(
             state = state,
             onLaunchApp = onLaunchApp,

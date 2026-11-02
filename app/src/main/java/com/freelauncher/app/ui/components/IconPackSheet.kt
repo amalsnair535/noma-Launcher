@@ -33,11 +33,9 @@ fun IconPackSheet(
     selectedIconPackPackage: String,
     installedIconPacks: List<IconPackInfo>,
     minimalIconPackConfig: MinimalIconPackConfig,
-    isProUnlocked: Boolean = false,
     onIconDisplayModeChanged: (IconDisplayMode) -> Unit,
     onSelectedIconPackChanged: (String) -> Unit,
     onOpenMinimalIconPackCreator: () -> Unit,
-    onOpenProSheet: () -> Unit = {},
     onDismiss: () -> Unit
 ) {
     val context = LocalContext.current
@@ -113,8 +111,6 @@ fun IconPackSheet(
             ) {
                 IconDisplayMode.entries.forEach { mode ->
                     val isSelected = iconDisplayMode == mode
-                    val isProMode = mode != IconDisplayMode.TEXT_ONLY
-                    val isLockedMode = !isProUnlocked && isProMode
 
                     Surface(
                         shape = RoundedCornerShape(14.dp),
@@ -129,11 +125,7 @@ fun IconPackSheet(
                             .clip(RoundedCornerShape(14.dp))
                             .clickable {
                                 LauncherHaptics.playClick(context)
-                                if (isLockedMode) {
-                                    onOpenProSheet()
-                                } else {
-                                    onIconDisplayModeChanged(mode)
-                                }
+                                onIconDisplayModeChanged(mode)
                             }
                     ) {
                         Column(
@@ -169,20 +161,6 @@ fun IconPackSheet(
                                                 )
                                             }
                                         }
-
-                                        if (isLockedMode) {
-                                            Surface(
-                                                shape = RoundedCornerShape(4.dp),
-                                                color = MaterialTheme.colorScheme.primary
-                                            ) {
-                                                Text(
-                                                    text = "PRO",
-                                                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.ExtraBold, fontSize = 8.sp),
-                                                    color = MaterialTheme.colorScheme.onPrimary,
-                                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
-                                                )
-                                            }
-                                        }
                                     }
 
                                     Text(
@@ -197,11 +175,7 @@ fun IconPackSheet(
                                     selected = isSelected,
                                     onClick = {
                                         LauncherHaptics.playClick(context)
-                                        if (isLockedMode) {
-                                            onOpenProSheet()
-                                        } else {
-                                            onIconDisplayModeChanged(mode)
-                                        }
+                                        onIconDisplayModeChanged(mode)
                                     }
                                 )
                             }
@@ -264,11 +238,7 @@ fun IconPackSheet(
                                 Button(
                                     onClick = {
                                         LauncherHaptics.playClick(context)
-                                        if (isLockedMode) {
-                                            onOpenProSheet()
-                                        } else {
-                                            onOpenMinimalIconPackCreator()
-                                        }
+                                        onOpenMinimalIconPackCreator()
                                     },
                                     modifier = Modifier.fillMaxWidth(),
                                     shape = RoundedCornerShape(12.dp),

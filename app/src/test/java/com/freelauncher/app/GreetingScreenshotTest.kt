@@ -33,7 +33,7 @@ class GreetingScreenshotTest {
       ) {
         HomeScreen(
           state = LauncherUiState(),
-          currentTime = Date(),
+          currentTimeFlow = kotlinx.coroutines.flow.MutableStateFlow(Date()),
           onNavigate = {},
           onOpenSettings = {}
         )

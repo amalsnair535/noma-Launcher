@@ -23,8 +23,8 @@ data class IconPackInfo(
 class IconPackManager(private val context: Context) {
 
     private val packageManager: PackageManager = context.packageManager
-    private val iconCache = LruCache<String, Drawable>(150)
-    private val appFilterCache = mutableMapOf<String, Map<String, String>>()
+    private val iconCache = LruCache<String, Drawable>(150) // LruCache is internally synchronized
+    private val appFilterCache = java.util.concurrent.ConcurrentHashMap<String, Map<String, String>>()
 
     companion object {
         private val ICON_PACK_ACTIONS = listOf(

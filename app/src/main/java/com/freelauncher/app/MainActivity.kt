@@ -84,7 +84,6 @@ class MainActivity : FragmentActivity() {
 
         setContent {
             val state by viewModel.uiState.collectAsStateWithLifecycle()
-            val currentTime by viewModel.currentTime.collectAsStateWithLifecycle()
             val context = LocalContext.current
 
             LaunchedEffect(state.showWeatherBatteryGlance) {
@@ -147,14 +146,10 @@ class MainActivity : FragmentActivity() {
             val onOpenCreator = remember { { viewModel.setAtmosphericCreatorVisible(true) } }
             val onDeleteTheme = remember { { id: String -> viewModel.deleteAtmosphericTheme(id) } }
 
-            val isCustomActive = (state.wallpaperId == "custom_gallery") && !state.customWallpaperUri.isNullOrBlank() && state.isProUnlocked
-            val currentWallpaper = remember(state.wallpaperId, state.customWallpapers, state.isProUnlocked) {
-                if (state.wallpaperId.startsWith("custom_theme_") && !state.isProUnlocked) {
-                    LauncherWallpaper.getById("cyber_noir")
-                } else {
-                    state.customWallpapers.find { it.id == state.wallpaperId }
-                        ?: LauncherWallpaper.getById(state.wallpaperId)
-                }
+            val isCustomActive = (state.wallpaperId == "custom_gallery") && !state.customWallpaperUri.isNullOrBlank()
+            val currentWallpaper = remember(state.wallpaperId, state.customWallpapers) {
+                state.customWallpapers.find { it.id == state.wallpaperId }
+                    ?: LauncherWallpaper.getById(state.wallpaperId)
             }
 
             FreeLauncherTheme(
@@ -273,7 +268,7 @@ class MainActivity : FragmentActivity() {
                             LauncherScreen.HOME -> {
                                 HomeScreen(
                                     state = state,
-                                    currentTime = currentTime,
+                                    currentTimeFlow = viewModel.currentTime,
                                     onNavigate = onNavigate,
                                     onOpenSettings = onOpenSettings,
                                     onOpenSearch = { viewModel.openSearchFromHome() },
@@ -286,14 +281,13 @@ class MainActivity : FragmentActivity() {
                                     onResetTimeCardOffset = onResetTimeCardOffset,
                                     onTimeCardScaleChanged = onTimeCardScaleChanged,
                                     onClockEditModeToggled = { onClockEditModeToggled(it) },
-                                    onToggleUltraFocus = { onToggleLock() },
-                                    onOpenProSheet = { viewModel.setProSheetVisible(true) }
+                                    onToggleUltraFocus = { onToggleLock() }
                                 )
                             }
                             LauncherScreen.SIX_APPS -> {
                                 SixAppsView(
                                     state = state,
-                                    currentTime = currentTime,
+                                    currentTimeFlow = viewModel.currentTime,
                                     onLaunchApp = onLaunchApp,
                                     onLongPressApp = onLongPressApp,
                                     onNavigate = onNavigate,
@@ -423,7 +417,6 @@ class MainActivity : FragmentActivity() {
                             temperatureUnit = state.temperatureUnit,
                             currentGreeting = state.customGreeting,
                             isBiometricLockEnabled = state.isBiometricLockEnabled,
-                            isProUnlocked = state.isProUnlocked,
                             lockMethod = state.lockMethod,
                             customPin = state.customPin,
                             onClockStyleChanged = onClockStyleChanged,
@@ -447,9 +440,7 @@ class MainActivity : FragmentActivity() {
                             onOpenCategoryManager = onOpenCategoryManager,
                             onOpenRssManager = onOpenRssManager,
                             onOpenOnboardingGuide = { viewModel.setOnboardingGuideVisible(true) },
-                            onOpenAboutSheet = { viewModel.setAboutSheetVisible(true) },
                             onOpenBackupSheet = { viewModel.setBackupSheetVisible(true) },
-                            onOpenProSheet = { viewModel.setProSheetVisible(true) },
                             enableLandscapeMode = state.enableLandscapeMode,
                             onLandscapeModeToggled = { viewModel.setLandscapeModeEnabled(it) },
                             iconDisplayMode = state.iconDisplayMode,
@@ -561,18 +552,7 @@ class MainActivity : FragmentActivity() {
                             onWallpaperDimChange = setWallpaperDim,
                             onOpenCreator = onOpenCreator,
                             onDeleteTheme = onDeleteTheme,
-                            isProUnlocked = state.isProUnlocked,
-                            onOpenProSheet = { viewModel.setProSheetVisible(true) },
                         ) { viewModel.setWallpaperPickerVisible(visible = false) }
-                    }
-
-                    // noma Pro Paywall Sheet
-                    if (state.showProSheet) {
-                        NomaProSheet(
-                            onUnlockPro = { viewModel.launchProPurchaseFlow(this@MainActivity) },
-                            onRestorePurchases = { viewModel.restorePurchases() },
-                            onDismiss = { viewModel.setProSheetVisible(false) }
-                        )
                     }
 
                     // Accessibility Service Prominent Disclosure Dialog
@@ -634,7 +614,7 @@ class MainActivity : FragmentActivity() {
         super.onResume()
         val insetsController = WindowCompat.getInsetsController(window, window.decorView)
         insetsController.hide(WindowInsetsCompat.Type.statusBars())
-        viewModel.refreshApps()
+        viewModel.refreshApps(forceRefresh = true)
         viewModel.refreshDigitalWellbeingStats()
     }
 }

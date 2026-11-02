@@ -71,12 +71,16 @@ fun AppIcon(
         }
 
         IconDisplayMode.ORIGINAL -> {
-            val drawable = remember(app.packageName, app.activityName, iconPackManager) {
-                iconPackManager?.getOriginalAppIcon(app.packageName, app.activityName)
+            val drawable by produceState<Drawable?>(initialValue = null, app.packageName, app.activityName, iconPackManager) {
+                if (iconPackManager != null) {
+                    value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                        iconPackManager.getOriginalAppIcon(app.packageName, app.activityName)
+                    }
+                }
             }
             if (drawable != null) {
                 DrawableImageIcon(
-                    drawable = drawable,
+                    drawable = drawable!!,
                     size = size,
                     modifier = modifier
                 )
@@ -90,12 +94,16 @@ fun AppIcon(
         }
 
         IconDisplayMode.ICON_PACK -> {
-            val drawable = remember(app.packageName, app.activityName, iconPackPackage, iconPackManager) {
-                iconPackManager?.getIconForApp(app.packageName, app.activityName, iconPackPackage)
+            val drawable by produceState<Drawable?>(initialValue = null, app.packageName, app.activityName, iconPackPackage, iconPackManager) {
+                if (iconPackManager != null) {
+                    value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                        iconPackManager.getIconForApp(app.packageName, app.activityName, iconPackPackage)
+                    }
+                }
             }
             if (drawable != null) {
                 DrawableImageIcon(
-                    drawable = drawable,
+                    drawable = drawable!!,
                     size = size,
                     modifier = modifier
                 )
@@ -109,10 +117,12 @@ fun AppIcon(
         }
 
         IconDisplayMode.MINIMAL_CREATOR -> {
-            val drawable = remember(app.packageName, app.activityName, minimalConfig.useMonogramGlyph, iconPackManager) {
-                if (!minimalConfig.useMonogramGlyph) {
-                    iconPackManager?.getOriginalAppIcon(app.packageName, app.activityName)
-                } else null
+            val drawable by produceState<Drawable?>(initialValue = null, app.packageName, app.activityName, minimalConfig.useMonogramGlyph, iconPackManager) {
+                if (!minimalConfig.useMonogramGlyph && iconPackManager != null) {
+                    value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                        iconPackManager.getOriginalAppIcon(app.packageName, app.activityName)
+                    }
+                }
             }
             MinimalCreatorIcon(
                 monogram = app.monogram,

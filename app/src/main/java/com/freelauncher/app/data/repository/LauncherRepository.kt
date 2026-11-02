@@ -212,9 +212,9 @@ class LauncherRepository(
         saveAppCategoryOverrides(current)
     }
 
-    suspend fun getInstalledApps(): List<AppItem> {
+    suspend fun getInstalledApps(forceRefresh: Boolean = false): List<AppItem> {
         val pinned = getPinnedIds()
-        val rawApps = appManager.getInstalledApps(pinned)
+        val rawApps = appManager.getInstalledApps(pinned, forceRefresh)
         val categories = getUserCategories()
         val categoryMap = categories.associateBy { it.id }
         val overrides = getAppCategoryOverrides()

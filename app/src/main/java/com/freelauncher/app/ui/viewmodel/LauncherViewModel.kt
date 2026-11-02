@@ -1,6 +1,5 @@
 package com.freelauncher.app.ui.viewmodel
 
-import android.app.Activity
 import android.app.Application
 import android.content.ContentUris
 import android.content.Context
@@ -102,9 +101,7 @@ data class LauncherUiState(
     val showOnboardingGuide: Boolean = false,
     val showRearrangePinnedDialog: Boolean = false,
     val showAboutSheet: Boolean = false,
-    val showProSheet: Boolean = false,
     val showBackupSheet: Boolean = false,
-    val isProUnlocked: Boolean = false,
     val showWeatherBatteryGlance: Boolean = false,
     val temperatureUnit: String = "F",
     val enableDoubleTapToSleep: Boolean = false,
@@ -140,11 +137,6 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
 
     private val weatherService = com.freelauncher.app.data.service.WeatherService(application)
     val iconPackManager = com.freelauncher.app.data.service.IconPackManager(application)
-    val billingManager = com.freelauncher.app.data.service.BillingManager(application) { isUnlocked ->
-        if (isUnlocked) {
-            unlockProFeatures()
-        }
-    }
 
     init {
         startTimeTicker()
@@ -194,7 +186,6 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
                 val sixAppsScale = settingsMap["six_apps_scale"]?.toFloatOrNull() ?: 0.9f
                 val lockMethod = settingsMap["lock_method"] ?: "pin"
                 val customPin = settingsMap["custom_launcher_pin"] ?: ""
-                val isProUnlocked = settingsMap["is_pro_unlocked"] == "true"
                 val enableLandscapeMode = settingsMap["enable_landscape_mode"] == "true"
 
                 val iconDisplayMode = repository.getIconDisplayMode()
@@ -234,7 +225,6 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
                         enableSwipeDownSearch = enableSwipeDownSearch,
                         enableMindfulPause = enableMindfulPause,
                         sixAppsScale = sixAppsScale.coerceIn(0.6f, 1.8f),
-                        isProUnlocked = isProUnlocked,
                         enableLandscapeMode = enableLandscapeMode,
                         iconDisplayMode = iconDisplayMode,
                         selectedIconPackPackage = selectedIconPackPackage,
@@ -316,9 +306,9 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         val categorizedApps: Map<com.freelauncher.app.data.models.AppCategory, List<AppItem>>
     )
 
-    fun refreshApps() {
+    fun refreshApps(forceRefresh: Boolean = false) {
         viewModelScope.launch {
-            val apps = repository.getInstalledApps()
+            val apps = repository.getInstalledApps(forceRefresh)
             val pinnedIds = repository.getPinnedIds()
 
             val processed = withContext(Dispatchers.Default) {
@@ -636,11 +626,7 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     }
 
     fun setBackupSheetVisible(visible: Boolean) {
-        if (visible && !_uiState.value.isProUnlocked) {
-            setProSheetVisible(true)
-        } else {
-            _uiState.update { it.copy(showBackupSheet = visible) }
-        }
+        _uiState.update { it.copy(showBackupSheet = visible) }
     }
 
     fun exportBackupJson(): String {
@@ -900,11 +886,6 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     }
 
     fun setWallpaper(id: String) {
-        val isCustomOrTheme = id == "custom_gallery" || id.startsWith("custom_theme_")
-        if (isCustomOrTheme && !_uiState.value.isProUnlocked) {
-            _uiState.update { it.copy(showProSheet = true) }
-            return
-        }
         viewModelScope.launch {
             _uiState.update { it.copy(wallpaperId = id) }
             repository.updateSetting("wallpaper_id", id)
@@ -950,10 +931,6 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     }
 
     fun saveCustomWallpaperFromUri(uri: Uri) {
-        if (!_uiState.value.isProUnlocked) {
-            _uiState.update { it.copy(showProSheet = true) }
-            return
-        }
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 val context = getApplication<Application>()
@@ -1078,25 +1055,6 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         viewModelScope.launch {
             repository.updateSetting("onboarding_completed", "true")
         }
-    }
-
-    fun setProSheetVisible(visible: Boolean) {
-        _uiState.update { it.copy(showProSheet = visible) }
-    }
-
-    fun unlockProFeatures() {
-        _uiState.update { it.copy(isProUnlocked = true, showProSheet = false) }
-        viewModelScope.launch {
-            repository.updateSetting("is_pro_unlocked", "true")
-        }
-    }
-
-    fun launchProPurchaseFlow(activity: Activity) {
-        billingManager.launchPurchaseFlow(activity)
-    }
-
-    fun restorePurchases() {
-        billingManager.queryPurchases()
     }
 
     fun openDefaultLauncherChooser(context: Context) {
@@ -1418,5 +1376,9 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
 
     fun clearPinnedLockFeedback() {
         _uiState.update { it.copy(pinnedLockFeedbackMessage = null) }
+    }
+
+    override fun onCleared() {
+        super.onCleared()
     }
 }

@@ -50,8 +50,6 @@ fun TransparentWallpaperSheet(
     onWallpaperDimChange: (Float) -> Unit,
     onOpenCreator: () -> Unit,
     onDeleteTheme: (String) -> Unit,
-    isProUnlocked: Boolean = false,
-    onOpenProSheet: () -> Unit = {},
     onDismiss: () -> Unit
 ) {
     val context = LocalContext.current
@@ -198,15 +196,9 @@ fun TransparentWallpaperSheet(
 
                         IconButton(
                             onClick = {
-                                val isCustomOrTheme = previewWallpaperId == "custom_gallery" || previewWallpaperId.startsWith("custom_theme_")
-                                if (!isProUnlocked && isCustomOrTheme) {
-                                    LauncherHaptics.playClick(context)
-                                    onOpenProSheet()
-                                } else {
-                                    onSelectWallpaper(previewWallpaperId)
-                                    onWallpaperDimChange(previewDim)
-                                    onDismiss()
-                                }
+                                onSelectWallpaper(previewWallpaperId)
+                                onWallpaperDimChange(previewDim)
+                                onDismiss()
                             },
                             modifier = Modifier
                                 .size(40.dp)
@@ -238,12 +230,7 @@ fun TransparentWallpaperSheet(
                                     .fillMaxWidth()
                                     .clip(RoundedCornerShape(20.dp))
                                     .clickable {
-                                        if (!isProUnlocked) {
-                                            LauncherHaptics.playClick(context)
-                                            onOpenProSheet()
-                                        } else {
-                                            onOpenCreator()
-                                        }
+                                        onOpenCreator()
                                     },
                                 shape = RoundedCornerShape(20.dp),
                                 color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f)
@@ -268,19 +255,6 @@ fun TransparentWallpaperSheet(
                                                 style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
                                                 color = MaterialTheme.colorScheme.onPrimaryContainer
                                             )
-                                            if (!isProUnlocked) {
-                                                Surface(
-                                                    shape = RoundedCornerShape(4.dp),
-                                                    color = MaterialTheme.colorScheme.primary
-                                                ) {
-                                                    Text(
-                                                        text = "PRO",
-                                                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.ExtraBold, fontSize = 8.sp),
-                                                        color = MaterialTheme.colorScheme.onPrimary,
-                                                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
-                                                    )
-                                                }
-                                            }
                                         }
                                         Text(
                                             text = "Design your own personalized gradient",
@@ -304,10 +278,7 @@ fun TransparentWallpaperSheet(
                                         shape = RoundedCornerShape(20.dp)
                                     )
                                     .clickable {
-                                        if (!isProUnlocked) {
-                                            LauncherHaptics.playClick(context)
-                                            onOpenProSheet()
-                                        } else if (customWallpaperUri != null) {
+                                        if (customWallpaperUri != null) {
                                             previewWallpaperId = "custom_gallery"
                                             onSelectWallpaper("custom_gallery")
                                         } else {
@@ -399,19 +370,8 @@ fun TransparentWallpaperSheet(
                                                 ),
                                                 color = MaterialTheme.colorScheme.onSurface
                                             )
-                                            if (!isProUnlocked) {
-                                                Surface(
-                                                    shape = RoundedCornerShape(4.dp),
-                                                    color = MaterialTheme.colorScheme.primary
-                                                ) {
-                                                    Text(
-                                                        text = "PRO",
-                                                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.ExtraBold, fontSize = 8.sp),
-                                                        color = MaterialTheme.colorScheme.onPrimary,
-                                                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
-                                                    )
-                                                }
-                                            } else if (isCustomActive) {
+
+                                            if (isCustomActive) {
                                                 Surface(
                                                     shape = RoundedCornerShape(6.dp),
                                                     color = MaterialTheme.colorScheme.primary
@@ -443,12 +403,7 @@ fun TransparentWallpaperSheet(
                                         ) {
                                             FilledTonalButton(
                                                 onClick = {
-                                                    if (!isProUnlocked) {
-                                                        LauncherHaptics.playClick(context)
-                                                        onOpenProSheet()
-                                                    } else {
-                                                        galleryLauncher.launch("image/*")
-                                                    }
+                                                    galleryLauncher.launch("image/*")
                                                 },
                                                 shape = RoundedCornerShape(10.dp),
                                                 contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
@@ -519,13 +474,8 @@ fun TransparentWallpaperSheet(
                                             shape = RoundedCornerShape(18.dp)
                                         )
                                         .clickable {
-                                            if (!isProUnlocked) {
-                                                LauncherHaptics.playClick(context)
-                                                onOpenProSheet()
-                                            } else {
-                                                previewWallpaperId = wallpaper.id
-                                                onSelectWallpaper(wallpaper.id)
-                                            }
+                                            previewWallpaperId = wallpaper.id
+                                            onSelectWallpaper(wallpaper.id)
                                         },
                                     shape = RoundedCornerShape(18.dp),
                                     color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f)

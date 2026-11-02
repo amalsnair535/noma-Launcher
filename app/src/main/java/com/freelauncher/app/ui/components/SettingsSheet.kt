@@ -65,7 +65,6 @@ fun SettingsSheet(
     temperatureUnit: String = "F",
     currentGreeting: String,
     isBiometricLockEnabled: Boolean = false,
-    isProUnlocked: Boolean = false,
     lockMethod: String = "pin",
     customPin: String = "",
     onClockStyleChanged: (ClockStyle) -> Unit,
@@ -93,7 +92,6 @@ fun SettingsSheet(
     onOpenOnboardingGuide: () -> Unit = {},
     onOpenAboutSheet: () -> Unit = {},
     onOpenBackupSheet: () -> Unit = {},
-    onOpenProSheet: () -> Unit = {},
     enableLandscapeMode: Boolean = false,
     onLandscapeModeToggled: (Boolean) -> Unit = {},
     iconDisplayMode: com.freelauncher.app.data.models.IconDisplayMode = com.freelauncher.app.data.models.IconDisplayMode.TEXT_ONLY,
@@ -418,18 +416,9 @@ fun SettingsSheet(
                                 ) {
                                     LauncherFont.entries.forEach { font ->
                                         val isSelected = font == currentFont
-                                        val isProFont = font != LauncherFont.MINIMAL_SANS
-                                        val isLockedFont = !isProUnlocked && isProFont
                                         FilterChip(
                                             selected = isSelected,
-                                            onClick = {
-                                                if (isLockedFont) {
-                                                    LauncherHaptics.playClick(context)
-                                                    onOpenProSheet()
-                                                } else {
-                                                    onFontChanged(font)
-                                                }
-                                            },
+                                            onClick = { onFontChanged(font) },
                                             label = {
                                                 Row(
                                                     verticalAlignment = Alignment.CenterVertically,
@@ -441,19 +430,6 @@ fun SettingsSheet(
                                                             fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
                                                         )
                                                     )
-                                                    if (isLockedFont) {
-                                                        Surface(
-                                                            shape = RoundedCornerShape(4.dp),
-                                                            color = MaterialTheme.colorScheme.primaryContainer
-                                                        ) {
-                                                            Text(
-                                                                text = "PRO",
-                                                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.ExtraBold, fontSize = 8.sp),
-                                                                color = MaterialTheme.colorScheme.onPrimaryContainer,
-                                                                modifier = Modifier.padding(horizontal = 3.dp, vertical = 1.dp)
-                                                            )
-                                                        }
-                                                    }
                                                 }
                                             },
                                             leadingIcon = if (isSelected) {
@@ -537,7 +513,6 @@ fun SettingsSheet(
                                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                     com.freelauncher.app.data.models.AppDrawerStyle.entries.forEach { style ->
                                         val isSelected = style == appDrawerStyle
-                                        val isLocked = !isProUnlocked && style == com.freelauncher.app.data.models.AppDrawerStyle.NEO_MINIMAL
                                         Surface(
                                             shape = RoundedCornerShape(12.dp),
                                             color = if (isSelected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
@@ -549,11 +524,7 @@ fun SettingsSheet(
                                                 .fillMaxWidth()
                                                 .clickable {
                                                     LauncherHaptics.playClick(context)
-                                                    if (isLocked) {
-                                                        onOpenProSheet()
-                                                    } else {
-                                                        onAppDrawerStyleChanged(style)
-                                                    }
+                                                    onAppDrawerStyleChanged(style)
                                                 }
                                         ) {
                                             Row(
@@ -588,19 +559,6 @@ fun SettingsSheet(
                                                             }
                                                         }
 
-                                                        if (isLocked) {
-                                                            Surface(
-                                                                shape = RoundedCornerShape(4.dp),
-                                                                color = MaterialTheme.colorScheme.primary
-                                                            ) {
-                                                                Text(
-                                                                    text = "PRO",
-                                                                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.ExtraBold, fontSize = 8.sp),
-                                                                    color = MaterialTheme.colorScheme.onPrimary,
-                                                                    modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp)
-                                                                )
-                                                            }
-                                                        }
                                                     }
                                                     Text(
                                                         text = style.subtitle,
@@ -612,11 +570,7 @@ fun SettingsSheet(
                                                     selected = isSelected,
                                                     onClick = {
                                                         LauncherHaptics.playClick(context)
-                                                        if (isLocked) {
-                                                            onOpenProSheet()
-                                                        } else {
-                                                            onAppDrawerStyleChanged(style)
-                                                        }
+                                                        onAppDrawerStyleChanged(style)
                                                     }
                                                 )
                                             }
@@ -705,20 +659,12 @@ fun SettingsSheet(
                                 ) {
                                     items(ClockStyle.entries, key = { it.id }) { style ->
                                         val isSelected = style == currentClockStyle
-                                        val isFreeStyle = style == ClockStyle.LARGE_DIGITAL || style == ClockStyle.THIN_DIGITAL
-                                        val isProLocked = !isProUnlocked && !isFreeStyle
                                         ClockStyleCard(
                                             style = style,
                                             isSelected = isSelected,
-                                            isProLocked = isProLocked,
                                             previewTime = previewTime,
                                             onClick = {
-                                                if (isProLocked) {
-                                                    LauncherHaptics.playClick(context)
-                                                    onOpenProSheet()
-                                                } else {
-                                                    onClockStyleChanged(style)
-                                                }
+                                                onClockStyleChanged(style)
                                             }
                                         )
                                     }
@@ -1535,12 +1481,7 @@ fun SettingsSheet(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .clickable {
-                                        if (!isProUnlocked) {
-                                            LauncherHaptics.playClick(context)
-                                            onOpenProSheet()
-                                        } else {
-                                            onOpenBackupSheet()
-                                        }
+                                        onOpenBackupSheet()
                                     }
                                     .padding(16.dp),
                                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -1575,19 +1516,6 @@ fun SettingsSheet(
                                                 style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Medium),
                                                 color = MaterialTheme.colorScheme.onSurface
                                             )
-                                            if (!isProUnlocked) {
-                                                Surface(
-                                                    shape = RoundedCornerShape(4.dp),
-                                                    color = MaterialTheme.colorScheme.primary
-                                                ) {
-                                                    Text(
-                                                        text = "PRO",
-                                                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.ExtraBold, fontSize = 8.sp),
-                                                        color = MaterialTheme.colorScheme.onPrimary,
-                                                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
-                                                    )
-                                                }
-                                            }
                                         }
                                         Text(
                                             text = "Export or import launcher settings and layout as JSON",
@@ -1745,11 +1673,9 @@ fun SettingsSheet(
             selectedIconPackPackage = selectedIconPackPackage,
             installedIconPacks = installedIconPacks,
             minimalIconPackConfig = minimalIconPackConfig,
-            isProUnlocked = isProUnlocked,
             onIconDisplayModeChanged = onIconDisplayModeChanged,
             onSelectedIconPackChanged = onSelectedIconPackChanged,
             onOpenMinimalIconPackCreator = onOpenMinimalIconPackCreator,
-            onOpenProSheet = onOpenProSheet,
             onDismiss = { showIconPackSheet = false }
         )
     }
@@ -1759,7 +1685,6 @@ fun SettingsSheet(
 private fun ClockStyleCard(
     style: ClockStyle,
     isSelected: Boolean,
-    isProLocked: Boolean,
     previewTime: Date,
     onClick: () -> Unit
 ) {
@@ -1786,27 +1711,11 @@ private fun ClockStyleCard(
                     .scale(0.40f),
                 contentAlignment = Alignment.Center
             ) {
+                val previewTimeFlow = remember(previewTime) { kotlinx.coroutines.flow.MutableStateFlow(previewTime) }
                 MinimalistClock(
-                    currentTime = previewTime,
+                    timeFlow = previewTimeFlow,
                     clockStyle = style
                 )
-            }
-
-            if (isProLocked) {
-                Surface(
-                    shape = RoundedCornerShape(4.dp),
-                    color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .padding(2.dp)
-                ) {
-                    Text(
-                        text = "PRO",
-                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.ExtraBold, fontSize = 8.sp),
-                        color = MaterialTheme.colorScheme.onPrimary,
-                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
-                    )
-                }
             }
         }
     }

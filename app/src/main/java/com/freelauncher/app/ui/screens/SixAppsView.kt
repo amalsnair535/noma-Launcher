@@ -43,6 +43,7 @@ import com.freelauncher.app.ui.util.DateTimeUtils
 import com.freelauncher.app.ui.util.LauncherHaptics
 import com.freelauncher.app.ui.viewmodel.LauncherScreen
 import com.freelauncher.app.ui.viewmodel.LauncherUiState
+import java.util.Calendar
 import kotlinx.coroutines.delay
 import java.util.Date
 import kotlin.math.abs
@@ -52,7 +53,7 @@ import androidx.compose.ui.platform.LocalLocale
 @Composable
 fun SixAppsView(
     state: LauncherUiState,
-    currentTime: Date,
+    currentTimeFlow: kotlinx.coroutines.flow.StateFlow<Date>,
     onLaunchApp: (AppItem) -> Unit,
     onNavigate: (LauncherScreen) -> Unit,
     onToggleLock: () -> Unit,
@@ -84,7 +85,14 @@ fun SixAppsView(
 
     val isLocked = state.isPinnedOnlyLocked
 
-    val dateText = remember(currentTime) { DateTimeUtils.format(currentTime, DateTimeUtils.Patterns.DATE_EEEE_MMMM_D) }
+    val dateText by produceState(
+        initialValue = DateTimeUtils.format(Calendar.getInstance().time, DateTimeUtils.Patterns.DATE_EEEE_MMMM_D),
+        currentTimeFlow
+    ) {
+        currentTimeFlow.collect { timeVal ->
+            value = DateTimeUtils.format(timeVal, DateTimeUtils.Patterns.DATE_EEEE_MMMM_D)
+        }
+    }
 
     // Request high refresh rate for smooth transitions when this screen is active
     val currentView = LocalView.current
@@ -214,9 +222,9 @@ fun SixAppsView(
                         verticalArrangement = Arrangement.Center
                     ) {
                         MinimalistClock(
-                            currentTime = currentTime,
-                            clockStyle = state.clockStyle
-                        )
+                        timeFlow = currentTimeFlow,
+                        clockStyle = state.clockStyle
+                    )
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
                             text = dateText,
@@ -397,7 +405,7 @@ fun SixAppsView(
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     MinimalistClock(
-                        currentTime = currentTime,
+                        timeFlow = currentTimeFlow,
                         clockStyle = state.clockStyle
                     )
                     Spacer(modifier = Modifier.height(8.dp))

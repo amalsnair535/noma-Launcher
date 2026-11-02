@@ -52,7 +52,7 @@ import kotlin.math.roundToInt
 @Composable
 fun HomeScreen(
     state: LauncherUiState,
-    currentTime: Date,
+    currentTimeFlow: kotlinx.coroutines.flow.StateFlow<Date>,
     onNavigate: (LauncherScreen) -> Unit,
     onOpenSettings: () -> Unit,
     modifier: Modifier = Modifier,
@@ -66,8 +66,7 @@ fun HomeScreen(
     onResetTimeCardOffset: () -> Unit = {},
     onTimeCardScaleChanged: (Float) -> Unit = {},
     onClockEditModeToggled: (Boolean) -> Unit = {},
-    onToggleUltraFocus: () -> Unit = {},
-    onOpenProSheet: () -> Unit = {},
+    onToggleUltraFocus: () -> Unit = {}
 ) {
     BackHandler(enabled = true) {
         if (state.isClockEditMode) {
@@ -77,12 +76,25 @@ fun HomeScreen(
     }
 
     val context = androidx.compose.ui.platform.LocalContext.current
-    val dateText = remember(currentTime) { DateTimeUtils.format(currentTime, DateTimeUtils.Patterns.DATE_EEEE_MMMM_D) }
-    val greetingText = remember(state.customGreeting, currentTime) {
+    val dateText by produceState(
+        initialValue = DateTimeUtils.format(Calendar.getInstance().time, DateTimeUtils.Patterns.DATE_EEEE_MMMM_D),
+        currentTimeFlow
+    ) {
+        currentTimeFlow.collect { time ->
+            value = DateTimeUtils.format(time, DateTimeUtils.Patterns.DATE_EEEE_MMMM_D)
+        }
+    }
+    
+    val greetingText by produceState(
+        initialValue = if (state.customGreeting == "auto") getContextualGreeting(Calendar.getInstance()) else state.customGreeting,
+        currentTimeFlow, state.customGreeting
+    ) {
         if (state.customGreeting == "auto") {
-            getContextualGreeting(Calendar.getInstance().apply { time = currentTime })
+            currentTimeFlow.collect { timeVal ->
+                value = getContextualGreeting(Calendar.getInstance().apply { time = timeVal })
+            }
         } else {
-            state.customGreeting
+            value = state.customGreeting
         }
     }
 
@@ -353,23 +365,11 @@ fun HomeScreen(
                                         if (clockSwipeAccumulator < -swipeThreshold) {
                                             val nextIndex = (latestStyleIndex + 1) % allClockStyles.size
                                             val targetStyle = allClockStyles[nextIndex]
-                                            val isFreeStyle = targetStyle == ClockStyle.LARGE_DIGITAL || targetStyle == ClockStyle.THIN_DIGITAL
-                                            if (!state.isProUnlocked && !isFreeStyle) {
-                                                LauncherHaptics.playClick(context)
-                                                onOpenProSheet()
-                                            } else {
-                                                onClockStyleChanged(targetStyle)
-                                            }
+                                            onClockStyleChanged(targetStyle)
                                         } else if (clockSwipeAccumulator > swipeThreshold) {
                                             val prevIndex = if ((latestStyleIndex - 1) < 0) allClockStyles.size - 1 else latestStyleIndex - 1
                                             val targetStyle = allClockStyles[prevIndex]
-                                            val isFreeStyle = targetStyle == ClockStyle.LARGE_DIGITAL || targetStyle == ClockStyle.THIN_DIGITAL
-                                            if (!state.isProUnlocked && !isFreeStyle) {
-                                                LauncherHaptics.playClick(context)
-                                                onOpenProSheet()
-                                            } else {
-                                                onClockStyleChanged(targetStyle)
-                                            }
+                                            onClockStyleChanged(targetStyle)
                                         }
                                         clockSwipeAccumulator = 0f
                                     }
@@ -400,7 +400,7 @@ fun HomeScreen(
                         verticalArrangement = Arrangement.Center
                     ) {
                         MinimalistClock(
-                            currentTime = currentTime,
+                            timeFlow = currentTimeFlow,
                             clockStyle = state.clockStyle,
                             modifier = Modifier.testTag("minimalist_clock")
                         )

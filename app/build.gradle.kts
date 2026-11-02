@@ -18,8 +18,8 @@ android {
     applicationId = "com.freelauncher.app"
     minSdk = 24
     targetSdk = 37
-    versionCode = 27
-    versionName = "3.5"
+    versionCode = 28
+    versionName = "4.0"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }
@@ -125,7 +125,6 @@ dependencies {
   implementation(libs.firebase.analytics)
   implementation(libs.playAppUpdate)
   implementation(libs.playAppUpdateKtx)
-  implementation(libs.play.billing.ktx)
   implementation(libs.play.services.location)
   implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.10.2")
   testImplementation(libs.androidx.core)

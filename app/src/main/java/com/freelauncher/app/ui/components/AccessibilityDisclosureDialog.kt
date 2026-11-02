@@ -48,7 +48,7 @@ fun AccessibilityDisclosureDialog(
         },
         title = {
             Text(
-                text = "Accessibility Service Disclosure",
+                text = "Enable Double-tap to Sleep?",
                 style = MaterialTheme.typography.titleLarge.copy(
                     fontWeight = FontWeight.Bold,
                     fontSize = 20.sp
@@ -63,40 +63,34 @@ fun AccessibilityDisclosureDialog(
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 Text(
-                    text = ".noma Launcher requests Accessibility Service permission exclusively to power the optional Double-Tap to Lock Screen feature.",
+                    text = "Noma Launcher uses Android's AccessibilityService API to lock your device and turn off the screen when you double-tap the home screen.",
+                    style = MaterialTheme.typography.bodyMedium.copy(lineHeight = 20.sp),
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                
+                Text(
+                    text = "This service is used only for this screen-lock action. It does not read screen content, monitor activity in other apps, or collect, store, or share personal data.",
                     style = MaterialTheme.typography.bodyMedium.copy(lineHeight = 20.sp),
                     color = MaterialTheme.colorScheme.onSurface
                 )
 
-                Surface(
-                    shape = RoundedCornerShape(12.dp),
-                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Column(
-                        modifier = Modifier.padding(12.dp),
-                        verticalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        Text(
-                            text = "• Feature Capability: Uses Android's GLOBAL_ACTION_LOCK_SCREEN command to turn off and lock your display when you double-tap an empty area on the Home screen.",
-                            style = MaterialTheme.typography.bodySmall.copy(lineHeight = 17.sp),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Text(
-                            text = "• Zero Data Collection: .noma Launcher does NOT collect, read, store, or transmit any user data, screen content, personal information, or keystrokes.",
-                            style = MaterialTheme.typography.bodySmall.copy(
-                                fontWeight = FontWeight.SemiBold,
-                                lineHeight = 17.sp
-                            ),
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                        Text(
-                            text = "• Full Control: The service remains inactive until you double-tap, and can be turned off at any time in Android System Settings.",
-                            style = MaterialTheme.typography.bodySmall.copy(lineHeight = 17.sp),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
+                Text(
+                    text = "This permission is optional. If you decline, Double-tap to Sleep stays disabled and other launcher features remain available.",
+                    style = MaterialTheme.typography.bodyMedium.copy(lineHeight = 20.sp),
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+
+                Text(
+                    text = "You can turn off this service at any time in Android Settings > Accessibility > Noma Launcher.",
+                    style = MaterialTheme.typography.bodyMedium.copy(lineHeight = 20.sp),
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                
+                Text(
+                    text = "Tap “Agree and continue” to open Android Accessibility settings, where you can enable the service.",
+                    style = MaterialTheme.typography.bodyMedium.copy(lineHeight = 20.sp),
+                    color = MaterialTheme.colorScheme.onSurface
+                )
             }
         },
         confirmButton = {
@@ -109,7 +103,7 @@ fun AccessibilityDisclosureDialog(
                 modifier = Modifier.testTag("confirm_accessibility_disclosure_button")
             ) {
                 Text(
-                    text = "I AGREE & GO TO SETTINGS",
+                    text = "Agree and continue",
                     style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold)
                 )
             }
@@ -123,7 +117,7 @@ fun AccessibilityDisclosureDialog(
                 modifier = Modifier.testTag("cancel_accessibility_disclosure_button")
             ) {
                 Text(
-                    text = "CANCEL",
+                    text = "Not now",
                     style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Medium),
                     color = MaterialTheme.colorScheme.secondary
                 )
