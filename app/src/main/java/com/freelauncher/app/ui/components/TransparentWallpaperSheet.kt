@@ -93,7 +93,13 @@ fun TransparentWallpaperSheet(
                 .testTag("transparent_wallpaper_overlay")
         ) {
             // Live Wallpaper preview behind the transparent UI
-            if (isCustomActive && customWallpaperUri != null) {
+            if (previewWallpaperId == "system_wallpaper") {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(Color.Transparent)
+                )
+            } else if (isCustomActive && customWallpaperUri != null) {
                 AsyncImage(
                     model = File(customWallpaperUri),
                     contentDescription = "Custom Wallpaper Preview",
@@ -223,7 +229,7 @@ fun TransparentWallpaperSheet(
                         verticalArrangement = Arrangement.spacedBy(12.dp),
                         contentPadding = PaddingValues(bottom = 16.dp)
                     ) {
-                        // Section 0: Create Your Own Atmosphere
+                        // Section 1: Create Your Own Atmosphere
                         item(key = "theme_creator_card") {
                             Surface(
                                 modifier = Modifier

@@ -1,6 +1,7 @@
 package com.freelauncher.app.ui.components
 
 import android.content.Intent
+import androidx.activity.compose.BackHandler
 import android.provider.Settings
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
@@ -17,13 +18,16 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.automirrored.outlined.OpenInNew
-import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -105,38 +109,46 @@ fun SettingsSheet(
     onAppDrawerStyleChanged: (com.freelauncher.app.data.models.AppDrawerStyle) -> Unit = {},
     hideEverythingOnHome: Boolean = false,
     onHideEverythingOnHomeToggled: (Boolean) -> Unit = {},
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
 ) {
     val context = LocalContext.current
     val previewTime = remember { Date() }
     val lazyListState = rememberLazyListState()
     var showIconPackSheet by remember { mutableStateOf(false) }
+    var selectedCategory by rememberSaveable { mutableStateOf("index") }
+    LaunchedEffect(selectedCategory) { lazyListState.scrollToItem(0) }
+    BackHandler(enabled = selectedCategory != "index") { selectedCategory = "index" }
 
-    ModalBottomSheet(
+    val categoryTitle = when (selectedCategory) {
+        "appearance" -> "Appearance"
+        "apps" -> "Apps & Icons"
+        "layout" -> "Home Screen"
+        "focus" -> "Focus & Privacy"
+        "feeds" -> "Feeds & System"
+        else -> "Settings"
+    }
+
+    Dialog(
         onDismissRequest = onDismiss,
-        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
-        containerColor = MaterialTheme.colorScheme.surface,
-        contentColor = MaterialTheme.colorScheme.onSurface,
-        shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
-        dragHandle = {
-            Box(
-                modifier = Modifier
-                    .padding(vertical = 12.dp)
-                    .width(40.dp)
-                    .height(5.dp)
-                    .clip(CircleShape)
-                    .background(MaterialTheme.colorScheme.outline.copy(alpha = 0.35f))
-            )
-        }
+        properties = DialogProperties(
+            usePlatformDefaultWidth = false,
+            decorFitsSystemWindows = false
+        )
     ) {
+        Surface(
+            modifier = Modifier.fillMaxSize(),
+            color = MaterialTheme.colorScheme.background,
+            contentColor = MaterialTheme.colorScheme.onBackground
+        ) {
         LazyColumn(
             state = lazyListState,
             modifier = Modifier
-                .fillMaxWidth()
+                .fillMaxSize()
+                .statusBarsPadding()
                 .navigationBarsPadding()
-                .padding(horizontal = 20.dp),
-            contentPadding = PaddingValues(top = 4.dp, bottom = 48.dp),
-            verticalArrangement = Arrangement.spacedBy(20.dp)
+                .padding(horizontal = 22.dp),
+            contentPadding = PaddingValues(top = 18.dp, bottom = 40.dp),
+            verticalArrangement = Arrangement.spacedBy(18.dp)
         ) {
             // Header with Close Button
             item(key = "header") {
@@ -167,7 +179,7 @@ fun SettingsSheet(
                         }
                         Column {
                             Text(
-                                text = "Settings",
+                                text = if (selectedCategory == "index") "Settings" else categoryTitle,
                                 style = MaterialTheme.typography.headlineSmall.copy(
                                     fontWeight = FontWeight.Bold,
                                     letterSpacing = (-0.5).sp
@@ -175,14 +187,14 @@ fun SettingsSheet(
                                 color = MaterialTheme.colorScheme.onSurface
                             )
                             Text(
-                                text = "Customization & Preferences",
+                                text = if (selectedCategory == "index") "NOMA  •  Customize your space" else "Personalize your ${categoryTitle.lowercase(Locale.ROOT)}",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.secondary
                             )
                         }
                     }
                     FilledTonalIconButton(
-                        onClick = onDismiss,
+                        onClick = { if (selectedCategory == "index") onDismiss() else selectedCategory = "index" },
                         modifier = Modifier
                             .size(40.dp)
                             .testTag("close_settings_button"),
@@ -192,17 +204,194 @@ fun SettingsSheet(
                         )
                     ) {
                         Icon(
-                            imageVector = Icons.Default.Close,
-                            contentDescription = "Close Settings",
+                            imageVector = if (selectedCategory == "index") Icons.Default.Close else Icons.AutoMirrored.Outlined.ArrowBack,
+                            contentDescription = if (selectedCategory == "index") "Close Settings" else "Back to settings",
                             modifier = Modifier.size(20.dp)
                         )
                     }
                 }
             }
 
+            item(key = "settings_categories") {
+                if (selectedCategory == "index") {
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Text(
+                            text = "PERSONALIZE",
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                fontWeight = FontWeight.SemiBold,
+                                letterSpacing = 1.5.sp
+                            ),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(start = 2.dp, bottom = 2.dp)
+                        )
+                        val categories = listOf(
+                            Triple("appearance", "Appearance", "Themes, wallpaper and typography"),
+                            Triple("apps", "Apps & Icons", "Icon packs and app drawer"),
+                            Triple("layout", "Home Screen", "Clock, layout and glance options"),
+                            Triple("focus", "Focus & Privacy", "Gestures, locks and mindful pause"),
+                            Triple("feeds", "Feeds & System", "News, Time Away and device options")
+                        )
+                        categories.forEach { (key, title, description) ->
+                            Surface(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(16.dp))
+                                    .clickable {
+                                        LauncherHaptics.playClick(context)
+                                        selectedCategory = key
+                                    }
+                                    .testTag("settings_category_$key"),
+                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.42f),
+                                shape = RoundedCornerShape(16.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 17.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(14.dp)
+                                ) {
+                                    Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                        Text(title, style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold))
+                                        Text(description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    }
+                                    Icon(Icons.Outlined.ChevronRight, contentDescription = "Open $title", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        Text(
+                            text = "HELP & SUPPORT",
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                fontWeight = FontWeight.SemiBold,
+                                letterSpacing = 1.5.sp
+                            ),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(start = 2.dp, bottom = 2.dp)
+                        )
+
+                        Surface(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(16.dp)),
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.42f),
+                            shape = RoundedCornerShape(16.dp)
+                        ) {
+                            Column {
+                                // Onboarding & Gesture Guide Row
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable {
+                                            LauncherHaptics.playClick(context)
+                                            onOpenOnboardingGuide()
+                                        }
+                                        .padding(horizontal = 16.dp, vertical = 15.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(14.dp),
+                                        modifier = Modifier.weight(1f)
+                                    ) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(38.dp)
+                                                .clip(RoundedCornerShape(10.dp))
+                                                .background(MaterialTheme.colorScheme.primaryContainer),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Outlined.Explore,
+                                                contentDescription = null,
+                                                tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                                modifier = Modifier.size(20.dp)
+                                            )
+                                        }
+                                        Column {
+                                            Text(
+                                                text = "Onboarding & Gesture Guide",
+                                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                                                color = MaterialTheme.colorScheme.onSurface
+                                            )
+                                            Text(
+                                                text = "View spatial navigation map and control tips",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        }
+                                    }
+                                    Icon(
+                                        imageVector = Icons.Outlined.ChevronRight,
+                                        contentDescription = "View Guide",
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.size(22.dp)
+                                    )
+                                }
+
+                                HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.15f), modifier = Modifier.padding(horizontal = 16.dp))
+
+                                // About NOMA Launcher & Support Row
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable {
+                                            LauncherHaptics.playClick(context)
+                                            onOpenAboutSheet()
+                                        }
+                                        .padding(horizontal = 16.dp, vertical = 15.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(14.dp),
+                                        modifier = Modifier.weight(1f)
+                                    ) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(38.dp)
+                                                .clip(RoundedCornerShape(10.dp))
+                                                .background(MaterialTheme.colorScheme.primaryContainer),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Outlined.Info,
+                                                contentDescription = null,
+                                                tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                                modifier = Modifier.size(20.dp)
+                                            )
+                                        }
+                                        Column {
+                                            Text(
+                                                text = "About NOMA Launcher & Support",
+                                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                                                color = MaterialTheme.colorScheme.onSurface
+                                            )
+                                            Text(
+                                                text = "Donation, reviews, privacy policy, and feedback",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        }
+                                    }
+                                    Icon(
+                                        imageVector = Icons.Outlined.ChevronRight,
+                                        contentDescription = "About NOMA Launcher",
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.size(22.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
             // SECTION 1: Aesthetics & Appearance
             item(key = "aesthetics_section") {
-                MaterialYouSection(
+                if (selectedCategory == "appearance") MaterialYouSection(
                     title = "Aesthetics & Appearance",
                     icon = Icons.Outlined.Palette,
                     subtitle = "Theme, wallpaper, & typography"
@@ -453,7 +642,7 @@ fun SettingsSheet(
 
             // SECTION 2: App Icons & App Drawer
             item(key = "icons_section") {
-                MaterialYouSection(
+                if (selectedCategory == "apps") MaterialYouSection(
                     title = "App Icons & App Drawer",
                     icon = Icons.Outlined.AutoAwesome,
                     subtitle = "Icon style, third-party packs, & quick access scale"
@@ -639,7 +828,7 @@ fun SettingsSheet(
 
             // SECTION 3: Home Layout & Clock Widget
             item(key = "home_layout_section") {
-                MaterialYouSection(
+                if (selectedCategory == "layout") MaterialYouSection(
                     title = "Home Layout & Clock Widget",
                     icon = Icons.Outlined.Schedule,
                     subtitle = "Clock styles, position, greeting, & landscape mode"
@@ -913,7 +1102,7 @@ fun SettingsSheet(
 
             // SECTION 4: Gestures, Security & Mindful Control
             item(key = "security_gestures_section") {
-                MaterialYouSection(
+                if (selectedCategory == "focus") MaterialYouSection(
                     title = "Gestures, Security & Mindful Control",
                     icon = Icons.Outlined.Security,
                     subtitle = "App lock, secret PIN, mindful pause, & gestures"
@@ -1235,7 +1424,7 @@ fun SettingsSheet(
 
             // SECTION 5: Feeds, Backup & System Integration
             item(key = "system_feeds_section") {
-                MaterialYouSection(
+                if (selectedCategory == "feeds") MaterialYouSection(
                     title = "Feeds, Backup & System Integration",
                     icon = Icons.Outlined.Home,
                     subtitle = "News feeds, Time Away, default launcher, & guide"
@@ -1460,7 +1649,7 @@ fun SettingsSheet(
                                             color = MaterialTheme.colorScheme.onSurface
                                         )
                                         Text(
-                                            text = "Open system settings to select FREE Launcher",
+                                            text = "Open system settings to select NOMA Launcher",
                                             style = MaterialTheme.typography.bodySmall,
                                             color = MaterialTheme.colorScheme.secondary
                                         )
@@ -1531,108 +1720,6 @@ fun SettingsSheet(
                                     modifier = Modifier.size(22.dp)
                                 )
                             }
-
-                            HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.15f), modifier = Modifier.padding(horizontal = 16.dp))
-
-                            // 5. Onboarding Guide Row
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable { onOpenOnboardingGuide() }
-                                    .padding(16.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(14.dp),
-                                    modifier = Modifier.weight(1f)
-                                ) {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(38.dp)
-                                            .clip(RoundedCornerShape(10.dp))
-                                            .background(MaterialTheme.colorScheme.primaryContainer),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Outlined.Explore,
-                                            contentDescription = null,
-                                            tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                                            modifier = Modifier.size(20.dp)
-                                        )
-                                    }
-                                    Column {
-                                        Text(
-                                            text = "Onboarding & Gesture Guide",
-                                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Medium),
-                                            color = MaterialTheme.colorScheme.onSurface
-                                        )
-                                        Text(
-                                            text = "View spatial navigation map and control tips",
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.secondary
-                                        )
-                                    }
-                                }
-                                Icon(
-                                    imageVector = Icons.Outlined.ChevronRight,
-                                    contentDescription = "View Guide",
-                                    tint = MaterialTheme.colorScheme.secondary,
-                                    modifier = Modifier.size(22.dp)
-                                )
-                            }
-
-                            HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.15f), modifier = Modifier.padding(horizontal = 16.dp))
-
-                            // 6. About & Support Row
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable { onOpenAboutSheet() }
-                                    .padding(16.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(14.dp),
-                                    modifier = Modifier.weight(1f)
-                                ) {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(38.dp)
-                                            .clip(RoundedCornerShape(10.dp))
-                                            .background(MaterialTheme.colorScheme.primaryContainer),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Outlined.Info,
-                                            contentDescription = null,
-                                            tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                                            modifier = Modifier.size(20.dp)
-                                        )
-                                    }
-                                    Column {
-                                        Text(
-                                            text = "About FREE Launcher & Support",
-                                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Medium),
-                                            color = MaterialTheme.colorScheme.onSurface
-                                        )
-                                        Text(
-                                            text = "Donation, reviews, privacy policy, and feedback",
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.secondary
-                                        )
-                                    }
-                                }
-                                Icon(
-                                    imageVector = Icons.Outlined.ChevronRight,
-                                    contentDescription = "About FREE Launcher",
-                                    tint = MaterialTheme.colorScheme.secondary,
-                                    modifier = Modifier.size(22.dp)
-                                )
-                            }
                         }
                     }
                 }
@@ -1640,6 +1727,7 @@ fun SettingsSheet(
 
             // Footer
             item(key = "footer") {
+                if (selectedCategory == "index") {
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -1663,7 +1751,9 @@ fun SettingsSheet(
                         color = MaterialTheme.colorScheme.secondary.copy(alpha = 0.7f)
                     )
                 }
+                }
             }
+        }
         }
     }
 
@@ -1773,12 +1863,12 @@ fun MaterialYouCard(
             .fillMaxWidth()
             .clip(RoundedCornerShape(20.dp))
             .border(
-                1.dp,
-                MaterialTheme.colorScheme.outline.copy(alpha = 0.25f),
-                RoundedCornerShape(20.dp)
+                0.5.dp,
+                MaterialTheme.colorScheme.outline.copy(alpha = 0.16f),
+                RoundedCornerShape(14.dp)
             ),
-        shape = RoundedCornerShape(20.dp),
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+        shape = RoundedCornerShape(14.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.22f),
         content = content
     )
 }

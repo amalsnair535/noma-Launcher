@@ -8,7 +8,7 @@ enum class WallpaperCategory(val title: String) {
     MINIMAL_DARK("Minimal Dark"),
     GRADIENT_ELEGANT("Atmospheric Gradients"),
     LIGHT_EINK("Paper & Light"),
-    TRANSPARENT_GLASS("Frosted Glass & Glassmorphism"),
+    TRANSPARENT_GLASS("Frosted Glass & System"),
     CUSTOM("My Creations")
 }
 
@@ -22,6 +22,16 @@ data class LauncherWallpaper(
     val brush: Brush = Brush.verticalGradient(colors)
 ) {
     companion object {
+        val SYSTEM_WALLPAPER = LauncherWallpaper(
+            id = "system_wallpaper",
+            name = "System Phone Wallpaper",
+            subtitle = "Live device wallpaper set from Gallery or Settings",
+            category = WallpaperCategory.TRANSPARENT_GLASS,
+            colors = listOf(Color.Transparent, Color.Transparent),
+            isDark = true,
+            brush = Brush.verticalGradient(listOf(Color.Transparent, Color.Transparent))
+        )
+
         val OLED_VOID = LauncherWallpaper(
             id = "oled_void",
             name = "Pitch Black Void",
@@ -165,7 +175,7 @@ data class LauncherWallpaper(
         )
 
         fun getById(id: String): LauncherWallpaper {
-            return ALL_WALLPAPERS.find { it.id == id } ?: OLED_VOID
+            return ALL_WALLPAPERS.find { it.id == id } ?: SYSTEM_WALLPAPER
         }
 
         fun fromEntity(entity: CustomWallpaperEntity): LauncherWallpaper {

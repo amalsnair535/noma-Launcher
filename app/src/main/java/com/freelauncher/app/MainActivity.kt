@@ -146,10 +146,43 @@ class MainActivity : FragmentActivity() {
             val onOpenCreator = remember { { viewModel.setAtmosphericCreatorVisible(true) } }
             val onDeleteTheme = remember { { id: String -> viewModel.deleteAtmosphericTheme(id) } }
 
+            val isSystemWallpaper = state.wallpaperId == "system_wallpaper"
             val isCustomActive = (state.wallpaperId == "custom_gallery") && !state.customWallpaperUri.isNullOrBlank()
             val currentWallpaper = remember(state.wallpaperId, state.customWallpapers) {
                 state.customWallpapers.find { it.id == state.wallpaperId }
                     ?: LauncherWallpaper.getById(state.wallpaperId)
+            }
+
+            // Dynamic Window Flags for Live System Wallpaper from Settings / Gallery
+            LaunchedEffect(isSystemWallpaper) {
+                if (isSystemWallpaper) {
+                    window.addFlags(android.view.WindowManager.LayoutParams.FLAG_SHOW_WALLPAPER)
+                } else {
+                    window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_SHOW_WALLPAPER)
+                }
+            }
+
+            // Listen for system wallpaper changes (from Gallery or Settings)
+            DisposableEffect(Unit) {
+                @Suppress("DEPRECATION")
+                val wallpaperReceiver = object : android.content.BroadcastReceiver() {
+                    override fun onReceive(context: android.content.Context?, intent: android.content.Intent?) {
+                        if (intent?.action == android.content.Intent.ACTION_WALLPAPER_CHANGED) {
+                            viewModel.refreshApps()
+                        }
+                    }
+                }
+                @Suppress("DEPRECATION")
+                val filter = android.content.IntentFilter(android.content.Intent.ACTION_WALLPAPER_CHANGED)
+                try {
+                    registerReceiver(wallpaperReceiver, filter)
+                } catch (_: Exception) {}
+
+                onDispose {
+                    try {
+                        unregisterReceiver(wallpaperReceiver)
+                    } catch (_: Exception) {}
+                }
             }
 
             FreeLauncherTheme(
@@ -160,7 +193,7 @@ class MainActivity : FragmentActivity() {
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .background(MaterialTheme.colorScheme.background),
+                        .background(if (isSystemWallpaper) Color.Transparent else MaterialTheme.colorScheme.background),
                 ) {
                     // Biometric Authentication Handler (Direct System Prompt)
                     LaunchedEffect(state.pendingBiometricUnlock, state.biometricAuthTrigger) {
@@ -183,7 +216,13 @@ class MainActivity : FragmentActivity() {
                         }
                     }
                     // Wallpaper Layer
-                    if (isCustomActive) {
+                    if (isSystemWallpaper) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(Color.Transparent),
+                        )
+                    } else if (isCustomActive) {
                         AsyncImage(
                             model = ImageRequest.Builder(LocalContext.current)
                                 .data(File(state.customWallpaperUri!!))
@@ -440,6 +479,7 @@ class MainActivity : FragmentActivity() {
                             onOpenCategoryManager = onOpenCategoryManager,
                             onOpenRssManager = onOpenRssManager,
                             onOpenOnboardingGuide = { viewModel.setOnboardingGuideVisible(true) },
+                            onOpenAboutSheet = { viewModel.setAboutSheetVisible(true) },
                             onOpenBackupSheet = { viewModel.setBackupSheetVisible(true) },
                             enableLandscapeMode = state.enableLandscapeMode,
                             onLandscapeModeToggled = { viewModel.setLandscapeModeEnabled(it) },

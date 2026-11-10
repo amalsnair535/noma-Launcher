@@ -1,9 +1,9 @@
 package com.freelauncher.app.ui.screens
 
+import android.app.SearchManager
 import android.content.Intent
-import android.provider.Settings
+import android.net.Uri
 import androidx.activity.compose.BackHandler
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.core.animateFloatAsState
@@ -25,6 +25,8 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.outlined.Language
+import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -50,6 +52,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.net.toUri
 import com.freelauncher.app.data.models.AppItem
 import com.freelauncher.app.data.service.UniversalSearchManager
 import com.freelauncher.app.ui.util.LauncherHaptics
@@ -58,6 +61,7 @@ import com.freelauncher.app.ui.viewmodel.LauncherScreen
 import com.freelauncher.app.ui.viewmodel.LauncherUiState
 import kotlinx.coroutines.delay
 import java.util.Locale
+import kotlin.time.Duration.Companion.milliseconds
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -73,14 +77,24 @@ fun NeoMinimalAppDrawer(
     val keyboardController = LocalSoftwareKeyboardController.current
     val focusRequester = remember { FocusRequester() }
 
-    var isSearchFocused by remember { mutableStateOf(false) }
-    val isSearching = state.searchQuery.isNotBlank() || isSearchFocused
+    var isSearchFocused by remember(state.isSearchOnlyMode) { mutableStateOf(state.isSearchOnlyMode) }
+    val isSearching = state.searchQuery.isNotBlank() || isSearchFocused || state.isSearchOnlyMode
+
+    LaunchedEffect(state.isSearchOnlyMode) {
+        if (state.isSearchOnlyMode) {
+            isSearchFocused = true
+            focusRequester.requestFocus()
+            delay(120.milliseconds)
+            keyboardController?.show()
+        }
+    }
 
     BackHandler {
-        if (isSearchFocused || state.searchQuery.isNotBlank()) {
+        if (isSearchFocused || state.searchQuery.isNotBlank() || state.isSearchOnlyMode) {
             onSearchQueryChange("")
             isSearchFocused = false
             keyboardController?.hide()
+            onNavigate(LauncherScreen.HOME)
         } else {
             onNavigate(LauncherScreen.HOME)
         }
@@ -101,7 +115,7 @@ fun NeoMinimalAppDrawer(
     LaunchedEffect(pagerState.currentPage, isSearching) {
         if (!isSearching) {
             isIndicatorVisible = true
-            delay(2500)
+            delay(2500.milliseconds)
             isIndicatorVisible = false
         }
     }
@@ -318,8 +332,24 @@ fun NeoMinimalAppDrawer(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    if (matchingApps.isEmpty() && matchingSettings.isEmpty()) {
-                        item {
+                    if (state.isSearchOnlyMode && state.searchQuery.isBlank()) {
+                        item(key = "search_mode_blank_space") {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(top = 40.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = "Type to search apps, settings, web...",
+                                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
+                                    color = MaterialTheme.colorScheme.secondary.copy(alpha = 0.45f),
+                                    textAlign = TextAlign.Center
+                                )
+                            }
+                        }
+                    } else if (matchingApps.isEmpty() && matchingSettings.isEmpty() && state.searchQuery.isNotBlank()) {
+                        item(key = "empty_state") {
                             Text(
                                 text = "No matching apps found",
                                 style = MaterialTheme.typography.bodyMedium,
@@ -328,40 +358,44 @@ fun NeoMinimalAppDrawer(
                             )
                         }
                     } else {
-                        items(
-                            items = matchingApps,
-                            key = { "search_${it.id}" }
-                        ) { app ->
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .heightIn(min = 50.dp)
-                                    .combinedClickable(
-                                        onClick = {
-                                            LauncherHaptics.playClick(context)
-                                            onLaunchApp(app)
-                                        },
-                                        onLongClick = {
-                                            LauncherHaptics.playClick(context)
-                                            onLongPressApp(app)
-                                        }
-                                    ),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(
-                                    text = app.label,
-                                    style = MaterialTheme.typography.titleMedium.copy(
-                                        fontSize = 18.sp,
-                                        fontWeight = FontWeight.Medium,
-                                        textAlign = TextAlign.Center
-                                    ),
-                                    color = MaterialTheme.colorScheme.onBackground,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
+                        // Matching Apps
+                        if (matchingApps.isNotEmpty()) {
+                            items(
+                                items = matchingApps,
+                                key = { "search_${it.id}" }
+                            ) { app ->
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .heightIn(min = 50.dp)
+                                        .combinedClickable(
+                                            onClick = {
+                                                LauncherHaptics.playClick(context)
+                                                onLaunchApp(app)
+                                            },
+                                            onLongClick = {
+                                                LauncherHaptics.playClick(context)
+                                                onLongPressApp(app)
+                                            }
+                                        ),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = app.label,
+                                        style = MaterialTheme.typography.titleMedium.copy(
+                                            fontSize = 18.sp,
+                                            fontWeight = FontWeight.Medium,
+                                            textAlign = TextAlign.Center
+                                        ),
+                                        color = MaterialTheme.colorScheme.onBackground,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
                             }
                         }
 
+                        // Matching Settings
                         if (matchingSettings.isNotEmpty()) {
                             items(
                                 items = matchingSettings,
@@ -390,6 +424,119 @@ fun NeoMinimalAppDrawer(
                                             color = MaterialTheme.colorScheme.secondary
                                         )
                                     }
+                                }
+                            }
+                        }
+                    }
+
+                    // Web Search & YouTube Search Shortcuts (when user typed a search query)
+                    if (state.searchQuery.isNotBlank()) {
+                        item(key = "web_search_item") {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .clickable {
+                                        try {
+                                            val webIntent = Intent(Intent.ACTION_WEB_SEARCH).apply {
+                                                putExtra(SearchManager.QUERY, state.searchQuery)
+                                                flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                                            }
+                                            context.startActivity(webIntent)
+                                        } catch (_: Exception) {
+                                            try {
+                                                val browserIntent = Intent(
+                                                    Intent.ACTION_VIEW,
+                                                    "https://www.google.com/search?q=${Uri.encode(state.searchQuery)}".toUri()
+                                                ).apply {
+                                                    flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                                                }
+                                                context.startActivity(browserIntent)
+                                            } catch (_: Exception) {}
+                                        }
+                                    }
+                                    .padding(vertical = 10.dp, horizontal = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(14.dp)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(32.dp)
+                                        .clip(RoundedCornerShape(6.dp))
+                                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Outlined.Language,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+                                Column {
+                                    Text(
+                                        text = "Search Google for \"${state.searchQuery}\"",
+                                        style = MaterialTheme.typography.bodyMedium.copy(
+                                            fontWeight = FontWeight.Medium,
+                                            fontSize = 16.sp
+                                        ),
+                                        color = MaterialTheme.colorScheme.onBackground
+                                    )
+                                    Text(
+                                        text = "Open web browser search",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.secondary.copy(alpha = 0.8f)
+                                    )
+                                }
+                            }
+                        }
+
+                        item(key = "youtube_search_item") {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .clickable {
+                                        try {
+                                            context.startActivity(UniversalSearchManager.getYouTubeSearchIntent(state.searchQuery))
+                                        } catch (_: Exception) {
+                                            try {
+                                                context.startActivity(UniversalSearchManager.getYouTubeWebSearchIntent(state.searchQuery))
+                                            } catch (_: Exception) {}
+                                        }
+                                    }
+                                    .padding(vertical = 10.dp, horizontal = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(14.dp)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(32.dp)
+                                        .clip(RoundedCornerShape(6.dp))
+                                        .background(Color(0xFFFF0000).copy(alpha = 0.1f)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Outlined.Language,
+                                        contentDescription = null,
+                                        tint = Color(0xFFFF0000),
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+                                Column {
+                                    Text(
+                                        text = "Search YouTube for \"${state.searchQuery}\"",
+                                        style = MaterialTheme.typography.bodyMedium.copy(
+                                            fontWeight = FontWeight.Medium,
+                                            fontSize = 16.sp
+                                        ),
+                                        color = MaterialTheme.colorScheme.onBackground
+                                    )
+                                    Text(
+                                        text = "Open YouTube app or web",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.secondary.copy(alpha = 0.8f)
+                                    )
                                 }
                             }
                         }
@@ -461,6 +608,9 @@ fun NeoMinimalAppDrawer(
                                 onSearchQueryChange("")
                                 isSearchFocused = false
                                 keyboardController?.hide()
+                                if (state.isSearchOnlyMode) {
+                                    onNavigate(LauncherScreen.HOME)
+                                }
                             },
                             modifier = Modifier.size(28.dp)
                         ) {
