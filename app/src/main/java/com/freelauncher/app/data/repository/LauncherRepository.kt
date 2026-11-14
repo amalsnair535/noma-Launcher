@@ -291,7 +291,7 @@ class LauncherRepository(
 
     suspend fun getAppDrawerStyle(): AppDrawerStyle = withContext(Dispatchers.IO) {
         val raw = settingDao.getSettingValue("app_drawer_style")
-        if (raw != null) AppDrawerStyle.fromName(raw) else AppDrawerStyle.CLASSIC
+        if (raw != null) AppDrawerStyle.fromName(raw) else AppDrawerStyle.NEO_MINIMAL
     }
 
     suspend fun saveAppDrawerStyle(style: AppDrawerStyle) = withContext(Dispatchers.IO) {

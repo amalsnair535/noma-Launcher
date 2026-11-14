@@ -277,10 +277,11 @@ private fun HeaderRow(
         }
 
         Text(
-            text = "Time Away",
-            style = MaterialTheme.typography.titleLarge.copy(
-                fontWeight = FontWeight.Bold,
-                letterSpacing = 0.5.sp
+            text = "time away",
+            style = MaterialTheme.typography.displaySmall.copy(
+                fontWeight = FontWeight.Light,
+                letterSpacing = (-0.5).sp,
+                fontSize = 32.sp
             ),
             color = MaterialTheme.colorScheme.onBackground
         )

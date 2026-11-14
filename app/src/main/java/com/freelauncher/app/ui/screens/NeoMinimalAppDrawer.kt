@@ -4,14 +4,15 @@ import android.app.SearchManager
 import android.content.Intent
 import android.net.Uri
 import androidx.activity.compose.BackHandler
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.ui.input.pointer.PointerEventPass
+import kotlinx.coroutines.launch
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -40,9 +41,12 @@ import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
@@ -50,6 +54,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.net.toUri
@@ -63,6 +68,42 @@ import kotlinx.coroutines.delay
 import java.util.Locale
 import kotlin.time.Duration.Companion.milliseconds
 
+import kotlin.time.Duration.Companion.milliseconds
+
+private fun Modifier.verticalFadingEdge(
+    topFadeHeight: Dp = 48.dp,
+    bottomFadeHeight: Dp = 64.dp
+): Modifier = this
+    .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
+    .drawWithContent {
+        drawContent()
+        val topFadePx = topFadeHeight.toPx()
+        val bottomFadePx = bottomFadeHeight.toPx()
+        val height = size.height
+
+        if (topFadePx > 0f) {
+            drawRect(
+                brush = Brush.verticalGradient(
+                    colors = listOf(Color.Transparent, Color.Black),
+                    startY = 0f,
+                    endY = topFadePx
+                ),
+                blendMode = BlendMode.DstIn
+            )
+        }
+
+        if (bottomFadePx > 0f) {
+            drawRect(
+                brush = Brush.verticalGradient(
+                    colors = listOf(Color.Black, Color.Transparent),
+                    startY = height - bottomFadePx,
+                    endY = height
+                ),
+                blendMode = BlendMode.DstIn
+            )
+        }
+    }
+
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun NeoMinimalAppDrawer(
@@ -72,20 +113,36 @@ fun NeoMinimalAppDrawer(
     onNavigate: (LauncherScreen) -> Unit,
     onSearchQueryChange: (String) -> Unit,
     modifier: Modifier = Modifier,
+    iconPackManager: com.freelauncher.app.data.service.IconPackManager? = null,
 ) {
     val context = LocalContext.current
     val keyboardController = LocalSoftwareKeyboardController.current
     val focusRequester = remember { FocusRequester() }
+    val effectiveIconPackManager = remember(context, iconPackManager) {
+        iconPackManager ?: com.freelauncher.app.data.service.IconPackManager(context)
+    }
 
     var isSearchFocused by remember(state.isSearchOnlyMode) { mutableStateOf(state.isSearchOnlyMode) }
     val isSearching = state.searchQuery.isNotBlank() || isSearchFocused || state.isSearchOnlyMode
 
-    LaunchedEffect(state.isSearchOnlyMode) {
-        if (state.isSearchOnlyMode) {
+    DisposableEffect(Unit) {
+        onDispose {
+            keyboardController?.hide()
+        }
+    }
+
+    LaunchedEffect(state.isSearchOnlyMode, state.isScribbleSearchMode, state.currentScreen) {
+        val shouldShowKeyboard = state.currentScreen == LauncherScreen.ALL_APPS && state.isSearchOnlyMode && !state.isScribbleSearchMode
+        if (shouldShowKeyboard) {
             isSearchFocused = true
             focusRequester.requestFocus()
             delay(120.milliseconds)
-            keyboardController?.show()
+            if (state.currentScreen == LauncherScreen.ALL_APPS && state.isSearchOnlyMode && !state.isScribbleSearchMode) {
+                keyboardController?.show()
+            }
+        } else {
+            isSearchFocused = false
+            keyboardController?.hide()
         }
     }
 
@@ -110,30 +167,15 @@ fun NeoMinimalAppDrawer(
 
     val pagerState = rememberPagerState(pageCount = { categoryIds.size })
 
-    // Auto-Hiding Top Category Indicator Timer
-    var isIndicatorVisible by remember { mutableStateOf(true) }
-    LaunchedEffect(pagerState.currentPage, isSearching) {
-        if (!isSearching) {
-            isIndicatorVisible = true
-            delay(2500.milliseconds)
-            isIndicatorVisible = false
-        }
-    }
-
-    val indicatorAlpha by animateFloatAsState(
-        targetValue = if (isIndicatorVisible && !isSearching) 1f else 0f,
-        animationSpec = tween(durationMillis = 300),
-        label = "indicator_alpha"
-    )
-
     // Universal Search Results
-    val matchingApps = remember(state.installedApps, state.searchQuery) {
+    val matchingApps = remember(state.installedApps, state.searchQuery, state.isScribbleSearchMode) {
         if (state.searchQuery.isNotBlank()) {
-            val q = state.searchQuery.lowercase(Locale.ROOT)
-            state.installedApps.filter {
-                it.label.lowercase(Locale.ROOT).contains(q) ||
-                        it.packageName.lowercase(Locale.ROOT).contains(q)
-            }.sortedBy { it.label.lowercase(Locale.ROOT) }
+            com.freelauncher.app.data.service.InstalledAppMatcher.matchApps(
+                installedApps = state.installedApps,
+                query = state.searchQuery,
+                limit = 100,
+                isScribbleSearch = state.isScribbleSearchMode
+            )
         } else {
             emptyList()
         }
@@ -147,6 +189,23 @@ fun NeoMinimalAppDrawer(
         }
     }
 
+    val scope = rememberCoroutineScope()
+    val scribbleRecognizer = remember(context) { com.freelauncher.app.data.service.ScribbleRecognizer(context) }
+    DisposableEffect(scribbleRecognizer) {
+        onDispose { scribbleRecognizer.close() }
+    }
+
+    var scribbleStrokes by remember { mutableStateOf<List<com.freelauncher.app.ui.util.ScribbleStroke>>(emptyList()) }
+    var currentStrokePoints by remember { mutableStateOf<List<com.freelauncher.app.ui.util.ScribblePoint>>(emptyList()) }
+    var isRecognizing by remember { mutableStateOf(false) }
+    var recognitionJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
+
+    val windowInfo = androidx.compose.ui.platform.LocalWindowInfo.current
+    val screenWidthPx = windowInfo.containerSize.width.toFloat()
+    val currentStroke = remember(currentStrokePoints) {
+        if (currentStrokePoints.size > 1) com.freelauncher.app.ui.util.ScribbleStroke(currentStrokePoints) else null
+    }
+
     Box(
         modifier = modifier
             .fillMaxSize()
@@ -154,9 +213,84 @@ fun NeoMinimalAppDrawer(
             .windowInsetsPadding(WindowInsets.statusBars)
             .windowInsetsPadding(WindowInsets.displayCutout)
             .navigationBarsPadding()
-            .pointerInput(Unit) {
-                detectTapGestures {
-                    isIndicatorVisible = true
+            .pointerInput(state.enableScribbleSearch, screenWidthPx, isSearching, state.searchQuery) {
+                if (state.enableScribbleSearch && isSearching) {
+                    awaitPointerEventScope {
+                        while (true) {
+                            val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+                            val strokePoints = mutableListOf<com.freelauncher.app.ui.util.ScribblePoint>()
+                            strokePoints.add(com.freelauncher.app.ui.util.ScribblePoint(down.position.x, down.position.y))
+                            currentStrokePoints = strokePoints.toList()
+                            val pointerId = down.id
+
+                            while (true) {
+                                val event = awaitPointerEvent(pass = PointerEventPass.Initial)
+                                val dragChange = event.changes.find { it.id == pointerId } ?: break
+
+                                if (dragChange.pressed) {
+                                    val lastPt = strokePoints.last()
+                                    val dx = dragChange.position.x - lastPt.x
+                                    val dy = dragChange.position.y - lastPt.y
+                                    if (kotlin.math.hypot(dx, dy) > 6f) {
+                                        strokePoints.add(com.freelauncher.app.ui.util.ScribblePoint(dragChange.position.x, dragChange.position.y))
+                                        currentStrokePoints = strokePoints.toList()
+                                    }
+                                } else {
+                                    break
+                                }
+                            }
+
+                            val completedStrokePoints = strokePoints.toList()
+                            currentStrokePoints = emptyList()
+
+                            if (completedStrokePoints.size > 1) {
+                                val gesturalAction = com.freelauncher.app.ui.util.ScribbleGestureCoordinator.analyzeStroke(
+                                    points = completedStrokePoints,
+                                    screenWidthPx = screenWidthPx
+                                )
+
+                                when (gesturalAction) {
+                                    com.freelauncher.app.ui.util.GesturalAction.SWIPE_LEFT,
+                                    com.freelauncher.app.ui.util.GesturalAction.SWIPE_RIGHT -> {
+                                        if (state.searchQuery.isNotEmpty()) {
+                                            com.freelauncher.app.ui.util.LauncherHaptics.playClick(context)
+                                            val updatedQuery = state.searchQuery.dropLast(1)
+                                            onSearchQueryChange(updatedQuery)
+                                        }
+                                    }
+                                    com.freelauncher.app.ui.util.GesturalAction.HANDWRITING_STROKE -> {
+                                        val newStrokes = scribbleStrokes + com.freelauncher.app.ui.util.ScribbleStroke(completedStrokePoints)
+                                        scribbleStrokes = newStrokes
+
+                                        recognitionJob?.cancel()
+                                        recognitionJob = scope.launch {
+                                            isRecognizing = true
+                                            delay(180.milliseconds)
+                                            val candidates = scribbleRecognizer.recognizeStrokes(newStrokes)
+                                            isRecognizing = false
+                                            scribbleStrokes = emptyList()
+                                            if (candidates.isNotEmpty()) {
+                                                val rawCandidate = candidates.first().trim()
+                                                val resolvedCandidate = when {
+                                                    rawCandidate.equals("i", ignoreCase = true) || rawCandidate == "1" || rawCandidate == "|" -> {
+                                                        if (candidates.any { it.equals("l", ignoreCase = true) } && !candidates.any { it.equals("i", ignoreCase = true) }) "L" else "I"
+                                                    }
+                                                    rawCandidate.equals("l", ignoreCase = true) -> "L"
+                                                    else -> rawCandidate
+                                                }
+                                                if (resolvedCandidate.isNotBlank()) {
+                                                    com.freelauncher.app.ui.util.LauncherHaptics.playClick(context)
+                                                    val accumulatedQuery = (state.searchQuery + resolvedCandidate).uppercase(Locale.ROOT)
+                                                    onSearchQueryChange(accumulatedQuery)
+                                                }
+                                            }
+                                        }
+                                    }
+                                    else -> { /* Tap or system swipe */ }
+                                }
+                            }
+                        }
+                    }
                 }
             }
             .testTag("neo_minimal_drawer_root")
@@ -164,18 +298,17 @@ fun NeoMinimalAppDrawer(
         if (!isSearching) {
             // Main Category View with Horizontal Category Pager
             Column(modifier = Modifier.fillMaxSize()) {
-                // Top Center Auto-Hiding Category Indicator
+                // Windows Phone Metro Style Large Category Header
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(top = 12.dp, bottom = 6.dp)
-                        .alpha(indicatorAlpha),
-                    contentAlignment = Alignment.Center
+                        .padding(start = 24.dp, end = 24.dp, top = 16.dp, bottom = 10.dp),
+                    contentAlignment = Alignment.CenterStart
                 ) {
                     val currentCatId = categoryIds[pagerState.currentPage]
                     val currentCatTitle = remember(currentCatId, visibleCategories) {
-                        if (currentCatId == null) "ALL APPS"
-                        else visibleCategories.find { it.id == currentCatId }?.title?.uppercase(Locale.ROOT) ?: currentCatId.uppercase(Locale.ROOT)
+                        if (currentCatId == null) "all apps"
+                        else visibleCategories.find { it.id == currentCatId }?.title?.lowercase(Locale.ROOT) ?: currentCatId.lowercase(Locale.ROOT)
                     }
 
                     val catApps = remember(currentCatId, state.installedApps) {
@@ -184,25 +317,26 @@ fun NeoMinimalAppDrawer(
                     }
 
                     Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                        horizontalAlignment = Alignment.Start,
+                        verticalArrangement = Arrangement.spacedBy(2.dp)
                     ) {
                         Text(
-                            text = "$currentCatTitle · ${catApps.size}",
-                            style = MaterialTheme.typography.labelSmall.copy(
-                                fontWeight = FontWeight.SemiBold,
-                                letterSpacing = 2.sp,
-                                fontSize = 11.sp
+                            text = currentCatTitle,
+                            style = MaterialTheme.typography.displaySmall.copy(
+                                fontWeight = FontWeight.Light,
+                                letterSpacing = (-0.5).sp,
+                                fontSize = 32.sp
                             ),
-                            color = MaterialTheme.colorScheme.secondary
+                            color = MaterialTheme.colorScheme.onBackground
                         )
 
-                        Box(
-                            modifier = Modifier
-                                .width(32.dp)
-                                .height(2.5.dp)
-                                .clip(CircleShape)
-                                .background(MaterialTheme.colorScheme.primary)
+                        Text(
+                            text = "${catApps.size} apps",
+                            style = MaterialTheme.typography.bodySmall.copy(
+                                fontSize = 12.sp,
+                                letterSpacing = 0.5.sp
+                            ),
+                            color = MaterialTheme.colorScheme.secondary.copy(alpha = 0.8f)
                         )
                     }
                 }
@@ -279,22 +413,42 @@ fun NeoMinimalAppDrawer(
                                                     onLongPressApp(app)
                                                 }
                                             )
-                                            .padding(vertical = 5.dp),
+                                            .padding(vertical = 5.dp, horizontal = 24.dp),
                                         contentAlignment = boxContentAlignment
                                     ) {
-                                        Text(
-                                            text = app.label,
-                                            style = MaterialTheme.typography.headlineMedium.copy(
-                                                fontSize = 22.sp * state.sixAppsScale,
-                                                fontWeight = FontWeight.Normal,
-                                                letterSpacing = 0.3.sp,
-                                                textAlign = appTextAlignment
-                                            ),
-                                            color = MaterialTheme.colorScheme.onBackground,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis,
-                                            modifier = Modifier.padding(horizontal = 24.dp)
-                                        )
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = when (state.allAppsAlignment) {
+                                                com.freelauncher.app.data.models.AllAppsAlignment.LEFT -> Arrangement.Start
+                                                com.freelauncher.app.data.models.AllAppsAlignment.CENTER -> Arrangement.Center
+                                                com.freelauncher.app.data.models.AllAppsAlignment.RIGHT -> Arrangement.End
+                                            }
+                                        ) {
+                                            if (state.iconDisplayMode != com.freelauncher.app.data.models.IconDisplayMode.TEXT_ONLY) {
+                                                com.freelauncher.app.ui.components.AppIcon(
+                                                    app = app,
+                                                    mode = state.iconDisplayMode,
+                                                    iconPackPackage = state.selectedIconPackPackage,
+                                                    iconPackManager = effectiveIconPackManager,
+                                                    minimalConfig = state.minimalIconPackConfig,
+                                                    size = (22.sp.value * state.sixAppsScale).dp
+                                                )
+                                                Spacer(modifier = Modifier.width(12.dp))
+                                            }
+
+                                            Text(
+                                                text = app.label,
+                                                style = MaterialTheme.typography.headlineMedium.copy(
+                                                    fontSize = 22.sp * state.sixAppsScale,
+                                                    fontWeight = FontWeight.Normal,
+                                                    letterSpacing = 0.3.sp,
+                                                    textAlign = appTextAlignment
+                                                ),
+                                                color = MaterialTheme.colorScheme.onBackground,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                        }
                                     }
                                 }
                             }
@@ -305,30 +459,48 @@ fun NeoMinimalAppDrawer(
         } else {
             // Search Results Mode
             Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(bottom = 80.dp)
+                modifier = Modifier.fillMaxSize()
             ) {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(vertical = 12.dp),
-                    contentAlignment = Alignment.Center
+                        .padding(start = 24.dp, end = 24.dp, top = 16.dp, bottom = 10.dp),
+                    contentAlignment = Alignment.CenterStart
                 ) {
-                    Text(
-                        text = "SEARCH RESULTS",
-                        style = MaterialTheme.typography.labelSmall.copy(
-                            fontWeight = FontWeight.SemiBold,
-                            letterSpacing = 2.sp,
-                            fontSize = 11.sp
-                        ),
-                        color = MaterialTheme.colorScheme.secondary
-                    )
+                    Column(
+                        horizontalAlignment = Alignment.Start,
+                        verticalArrangement = Arrangement.spacedBy(2.dp)
+                    ) {
+                        val headerText = if (state.isScribbleSearchMode) {
+                            if (state.searchQuery.isBlank()) "scribble search" else state.searchQuery.uppercase(Locale.ROOT)
+                        } else {
+                            if (state.searchQuery.isBlank()) "search" else state.searchQuery.lowercase(Locale.ROOT)
+                        }
+
+                        Text(
+                            text = headerText,
+                            style = MaterialTheme.typography.displaySmall.copy(
+                                fontWeight = FontWeight.Light,
+                                letterSpacing = (-0.5).sp,
+                                fontSize = 32.sp
+                            ),
+                            color = MaterialTheme.colorScheme.onBackground
+                        )
+
+                        Text(
+                            text = "${matchingApps.size} apps found",
+                            style = MaterialTheme.typography.bodySmall.copy(
+                                fontSize = 12.sp,
+                                letterSpacing = 0.5.sp
+                            ),
+                            color = MaterialTheme.colorScheme.secondary.copy(alpha = 0.8f)
+                        )
+                    }
                 }
 
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(horizontal = 24.dp, vertical = 8.dp),
+                    contentPadding = PaddingValues(start = 24.dp, end = 24.dp, top = 8.dp, bottom = 100.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
@@ -364,10 +536,21 @@ fun NeoMinimalAppDrawer(
                                 items = matchingApps,
                                 key = { "search_${it.id}" }
                             ) { app ->
+                                val appTextAlignment = when (state.allAppsAlignment) {
+                                    com.freelauncher.app.data.models.AllAppsAlignment.LEFT -> TextAlign.Start
+                                    com.freelauncher.app.data.models.AllAppsAlignment.CENTER -> TextAlign.Center
+                                    com.freelauncher.app.data.models.AllAppsAlignment.RIGHT -> TextAlign.End
+                                }
+                                val boxContentAlignment = when (state.allAppsAlignment) {
+                                    com.freelauncher.app.data.models.AllAppsAlignment.LEFT -> Alignment.CenterStart
+                                    com.freelauncher.app.data.models.AllAppsAlignment.CENTER -> Alignment.Center
+                                    com.freelauncher.app.data.models.AllAppsAlignment.RIGHT -> Alignment.CenterEnd
+                                }
+
                                 Box(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .heightIn(min = 50.dp)
+                                        .heightIn(min = 44.dp)
                                         .combinedClickable(
                                             onClick = {
                                                 LauncherHaptics.playClick(context)
@@ -377,20 +560,43 @@ fun NeoMinimalAppDrawer(
                                                 LauncherHaptics.playClick(context)
                                                 onLongPressApp(app)
                                             }
-                                        ),
-                                    contentAlignment = Alignment.Center
+                                        )
+                                        .padding(vertical = 5.dp),
+                                    contentAlignment = boxContentAlignment
                                 ) {
-                                    Text(
-                                        text = app.label,
-                                        style = MaterialTheme.typography.titleMedium.copy(
-                                            fontSize = 18.sp,
-                                            fontWeight = FontWeight.Medium,
-                                            textAlign = TextAlign.Center
-                                        ),
-                                        color = MaterialTheme.colorScheme.onBackground,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = when (state.allAppsAlignment) {
+                                            com.freelauncher.app.data.models.AllAppsAlignment.LEFT -> Arrangement.Start
+                                            com.freelauncher.app.data.models.AllAppsAlignment.CENTER -> Arrangement.Center
+                                            com.freelauncher.app.data.models.AllAppsAlignment.RIGHT -> Arrangement.End
+                                        }
+                                    ) {
+                                        if (state.iconDisplayMode != com.freelauncher.app.data.models.IconDisplayMode.TEXT_ONLY) {
+                                            com.freelauncher.app.ui.components.AppIcon(
+                                                app = app,
+                                                mode = state.iconDisplayMode,
+                                                iconPackPackage = state.selectedIconPackPackage,
+                                                iconPackManager = effectiveIconPackManager,
+                                                minimalConfig = state.minimalIconPackConfig,
+                                                size = (22.sp.value * state.sixAppsScale).dp
+                                            )
+                                            Spacer(modifier = Modifier.width(12.dp))
+                                        }
+
+                                        Text(
+                                            text = app.label,
+                                            style = MaterialTheme.typography.headlineMedium.copy(
+                                                fontSize = 22.sp * state.sixAppsScale,
+                                                fontWeight = FontWeight.Normal,
+                                                letterSpacing = 0.3.sp,
+                                                textAlign = appTextAlignment
+                                            ),
+                                            color = MaterialTheme.colorScheme.onBackground,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -546,14 +752,15 @@ fun NeoMinimalAppDrawer(
         }
 
         // Floating Bottom Search Bar (Theme-Adaptive Dark Charcoal Pill)
-        Box(
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .fillMaxWidth()
-                .imePadding()
-                .padding(horizontal = 24.dp, vertical = 16.dp),
-            contentAlignment = Alignment.Center
-        ) {
+        if (!state.isScribbleSearchMode) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .imePadding()
+                    .padding(horizontal = 24.dp, vertical = 16.dp),
+                contentAlignment = Alignment.Center
+            ) {
             Surface(
                 shape = RoundedCornerShape(26.dp),
                 color = MaterialTheme.colorScheme.surfaceVariant,
@@ -632,39 +839,35 @@ fun NeoMinimalAppDrawer(
                 }
             }
         }
+
+        // Live Smooth Ink Drawing Canvas Overlay for Scribble Search
+        if (state.enableScribbleSearch) {
+            val strokeColor = MaterialTheme.colorScheme.primary
+            val activeStrokes = scribbleStrokes + listOfNotNull(currentStroke)
+            Canvas(modifier = Modifier.fillMaxSize()) {
+                for (stroke in activeStrokes) {
+                    if (stroke.points.size > 1) {
+                        val path = Path().apply {
+                            moveTo(stroke.points.first().x, stroke.points.first().y)
+                            for (i in 1 until stroke.points.size) {
+                                val p = stroke.points[i]
+                                lineTo(p.x, p.y)
+                            }
+                        }
+                        drawPath(
+                            path = path,
+                            color = strokeColor,
+                            style = Stroke(
+                                width = 6.dp.toPx(),
+                                cap = StrokeCap.Round,
+                                join = StrokeJoin.Round
+                            )
+                        )
+                    }
+                }
+            }
+        }
     }
 }
+}
 
-private fun Modifier.verticalFadingEdge(
-    topFadeHeight: Dp = 48.dp,
-    bottomFadeHeight: Dp = 64.dp
-): Modifier = this
-    .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
-    .drawWithContent {
-        drawContent()
-        val topFadePx = topFadeHeight.toPx()
-        val bottomFadePx = bottomFadeHeight.toPx()
-        val height = size.height
-
-        if (topFadePx > 0f) {
-            drawRect(
-                brush = Brush.verticalGradient(
-                    colors = listOf(Color.Transparent, Color.Black),
-                    startY = 0f,
-                    endY = topFadePx
-                ),
-                blendMode = BlendMode.DstIn
-            )
-        }
-
-        if (bottomFadePx > 0f) {
-            drawRect(
-                brush = Brush.verticalGradient(
-                    colors = listOf(Color.Black, Color.Transparent),
-                    startY = height - bottomFadePx,
-                    endY = height
-                ),
-                blendMode = BlendMode.DstIn
-            )
-        }
-    }

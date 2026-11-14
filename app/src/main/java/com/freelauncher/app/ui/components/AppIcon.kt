@@ -50,10 +50,10 @@ val HexagonShape = GenericShape { size, _ ->
 @Composable
 fun AppIcon(
     app: AppItem,
-    mode: IconDisplayMode,
-    iconPackPackage: String,
-    iconPackManager: IconPackManager?,
-    minimalConfig: MinimalIconPackConfig,
+    mode: IconDisplayMode = IconDisplayMode.ORIGINAL,
+    iconPackPackage: String = "",
+    iconPackManager: IconPackManager? = null,
+    minimalConfig: MinimalIconPackConfig = MinimalIconPackConfig(),
     modifier: Modifier = Modifier,
     size: Dp = 36.dp
 ) {

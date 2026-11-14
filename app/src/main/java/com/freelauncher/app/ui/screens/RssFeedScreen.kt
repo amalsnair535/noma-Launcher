@@ -11,7 +11,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
@@ -91,17 +91,18 @@ fun RssFeedScreen(
                 modifier = Modifier.testTag("rss_back_to_home")
             ) {
                 Icon(
-                    imageVector = Icons.Default.ArrowBack,
+                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                     contentDescription = "Back to Home",
                     tint = MaterialTheme.colorScheme.onBackground
                 )
             }
 
             Text(
-                text = "NEWS",
-                style = MaterialTheme.typography.titleLarge.copy(
-                    fontWeight = FontWeight.SemiBold,
-                    letterSpacing = 2.sp
+                text = "news",
+                style = MaterialTheme.typography.displaySmall.copy(
+                    fontWeight = FontWeight.Light,
+                    letterSpacing = (-0.5).sp,
+                    fontSize = 32.sp
                 ),
                 color = MaterialTheme.colorScheme.onBackground
             )

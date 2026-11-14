@@ -19,7 +19,8 @@ data class LauncherWallpaper(
     val category: WallpaperCategory,
     val colors: List<Color>,
     val isDark: Boolean = true,
-    val brush: Brush = Brush.verticalGradient(colors)
+    val brush: Brush = Brush.verticalGradient(colors),
+    val drawableResId: Int? = null
 ) {
     companion object {
         val SYSTEM_WALLPAPER = LauncherWallpaper(
@@ -175,7 +176,7 @@ data class LauncherWallpaper(
         )
 
         fun getById(id: String): LauncherWallpaper {
-            return ALL_WALLPAPERS.find { it.id == id } ?: SYSTEM_WALLPAPER
+            return ALL_WALLPAPERS.find { it.id == id } ?: CYBER_NOIR
         }
 
         fun fromEntity(entity: CustomWallpaperEntity): LauncherWallpaper {

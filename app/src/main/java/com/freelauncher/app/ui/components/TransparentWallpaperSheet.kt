@@ -99,10 +99,17 @@ fun TransparentWallpaperSheet(
                         .fillMaxSize()
                         .background(Color.Transparent)
                 )
-            } else if (isCustomActive && customWallpaperUri != null) {
+            } else if (isCustomActive) {
                 AsyncImage(
                     model = File(customWallpaperUri),
                     contentDescription = "Custom Wallpaper Preview",
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize()
+                )
+            } else if (activePreviewWallpaper.drawableResId != null) {
+                androidx.compose.foundation.Image(
+                    painter = androidx.compose.ui.res.painterResource(activePreviewWallpaper.drawableResId),
+                    contentDescription = "Wallpaper Preview",
                     contentScale = ContentScale.Crop,
                     modifier = Modifier.fillMaxSize()
                 )
@@ -545,7 +552,7 @@ fun TransparentWallpaperSheet(
                                         modifier = Modifier
                                             .size(width = 68.dp, height = 76.dp)
                                             .clip(RoundedCornerShape(12.dp))
-                                            .background(wallpaper.brush)
+                                            .then(if (wallpaper.drawableResId == null) Modifier.background(wallpaper.brush) else Modifier)
                                             .border(
                                                 1.dp,
                                                 MaterialTheme.colorScheme.outline.copy(alpha = 0.3f),
@@ -553,6 +560,15 @@ fun TransparentWallpaperSheet(
                                             ),
                                         contentAlignment = Alignment.Center
                                     ) {
+                                        if (wallpaper.drawableResId != null) {
+                                            androidx.compose.foundation.Image(
+                                                painter = androidx.compose.ui.res.painterResource(wallpaper.drawableResId),
+                                                contentDescription = wallpaper.name,
+                                                contentScale = ContentScale.Crop,
+                                                modifier = Modifier.fillMaxSize()
+                                            )
+                                        }
+
                                         if (isSelected) {
                                             Box(
                                                 modifier = Modifier

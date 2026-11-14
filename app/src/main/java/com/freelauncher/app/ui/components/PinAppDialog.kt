@@ -321,7 +321,7 @@ fun PinAppDialog(
                         colors = ButtonDefaults.outlinedButtonColors(
                             contentColor = MaterialTheme.colorScheme.onSurface
                         ),
-                        border = ButtonDefaults.outlinedButtonBorder.copy(
+                        border = ButtonDefaults.outlinedButtonBorder(enabled = true).copy(
                             brush = androidx.compose.ui.graphics.SolidColor(
                                 MaterialTheme.colorScheme.outline.copy(alpha = 0.4f)
                             )

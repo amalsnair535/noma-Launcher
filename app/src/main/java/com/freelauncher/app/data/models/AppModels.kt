@@ -51,12 +51,12 @@ enum class AppCategory(val title: String) {
 }
 
 enum class AppDrawerStyle(val id: String, val displayName: String, val subtitle: String) {
-    CLASSIC("classic", "Classic", "Original text list with top category tabs"),
-    NEO_MINIMAL("neo_minimal", "Neo Minimal", "Centered text list with swipe categories & floating search");
+    NEO_MINIMAL("neo_minimal", "Neo Minimal", "Centered text list with swipe categories & floating search"),
+    CLASSIC("classic", "Classic", "Original text list with top category tabs");
 
     companion object {
         fun fromName(name: String): AppDrawerStyle {
-            return entries.find { it.name.equals(name, ignoreCase = true) || it.id.equals(name, ignoreCase = true) } ?: CLASSIC
+            return entries.find { it.name.equals(name, ignoreCase = true) || it.id.equals(name, ignoreCase = true) } ?: NEO_MINIMAL
         }
     }
 }

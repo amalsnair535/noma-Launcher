@@ -106,6 +106,7 @@ data class LauncherUiState(
     val temperatureUnit: String = "F",
     val enableDoubleTapToSleep: Boolean = false,
     val enableSwipeDownSearch: Boolean = false,
+    val enableScribbleSearch: Boolean = false,
     val enableMindfulPause: Boolean = false,
     val appPendingMindfulPause: AppItem? = null,
     val sixAppsScale: Float = 0.9f,
@@ -119,10 +120,11 @@ data class LauncherUiState(
     val installedIconPacks: List<com.freelauncher.app.data.service.IconPackInfo> = emptyList(),
     val showMinimalIconPackCreator: Boolean = false,
     val showAccessibilityDisclosureDialog: Boolean = false,
-    val appDrawerStyle: com.freelauncher.app.data.models.AppDrawerStyle = com.freelauncher.app.data.models.AppDrawerStyle.CLASSIC,
+    val appDrawerStyle: com.freelauncher.app.data.models.AppDrawerStyle = com.freelauncher.app.data.models.AppDrawerStyle.NEO_MINIMAL,
     val sixAppsAlignment: com.freelauncher.app.data.models.SixAppsAlignment = com.freelauncher.app.data.models.SixAppsAlignment.LEFT,
     val allAppsAlignment: com.freelauncher.app.data.models.AllAppsAlignment = com.freelauncher.app.data.models.AllAppsAlignment.CENTER,
     val hideEverythingOnHome: Boolean = false,
+    val isScribbleSearchMode: Boolean = false,
 )
 
 class LauncherViewModel(application: Application) : AndroidViewModel(application) {
@@ -182,6 +184,7 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
                 val tempUnit = settingsMap["temperature_unit"] ?: "F"
                 val doubleTapToSleep = settingsMap["enable_double_tap_to_sleep"] == "true"
                 val enableSwipeDownSearch = settingsMap["enable_swipe_down_search"] == "true"
+                val enableScribbleSearch = settingsMap["enable_scribble_search"] == "true"
                 val enableMindfulPause = settingsMap["enable_mindful_pause"] == "true"
                 val sixAppsScale = settingsMap["six_apps_scale"]?.toFloatOrNull() ?: 0.9f
                 val lockMethod = settingsMap["lock_method"] ?: "pin"
@@ -223,6 +226,7 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
                         temperatureUnit = tempUnit,
                         enableDoubleTapToSleep = doubleTapToSleep,
                         enableSwipeDownSearch = enableSwipeDownSearch,
+                        enableScribbleSearch = enableScribbleSearch,
                         enableMindfulPause = enableMindfulPause,
                         sixAppsScale = sixAppsScale.coerceIn(0.6f, 1.8f),
                         enableLandscapeMode = enableLandscapeMode,
@@ -442,12 +446,30 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
             _uiState.update { it.copy(pinnedLockFeedbackMessage = "UltraFocus Mode Locked • Triple-tap to exit") }
             return
         }
-        _uiState.update { 
-            it.copy(
-                currentScreen = screen,
-                isSearchOnlyMode = if (screen == LauncherScreen.ALL_APPS) it.isSearchOnlyMode else false,
-                searchQuery = if (screen == LauncherScreen.ALL_APPS) it.searchQuery else ""
-            ) 
+        val leavingAllApps = _uiState.value.currentScreen == LauncherScreen.ALL_APPS && screen != LauncherScreen.ALL_APPS
+        if (leavingAllApps) {
+            _uiState.update { it.copy(currentScreen = screen) }
+            viewModelScope.launch {
+                delay(220.milliseconds)
+                if (_uiState.value.currentScreen != LauncherScreen.ALL_APPS) {
+                    _uiState.update {
+                        it.copy(
+                            isSearchOnlyMode = false,
+                            isScribbleSearchMode = false,
+                            searchQuery = ""
+                        )
+                    }
+                }
+            }
+        } else {
+            _uiState.update { 
+                it.copy(
+                    currentScreen = screen,
+                    isSearchOnlyMode = if (screen == LauncherScreen.ALL_APPS) it.isSearchOnlyMode else false,
+                    isScribbleSearchMode = if (screen == LauncherScreen.ALL_APPS) it.isScribbleSearchMode else false,
+                    searchQuery = if (screen == LauncherScreen.ALL_APPS) it.searchQuery else ""
+                ) 
+            }
         }
     }
 
@@ -476,6 +498,7 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
             _uiState.update {
                 it.copy(
                     isSearchOnlyMode = true,
+                    isScribbleSearchMode = false,
                     searchQuery = "",
                     currentScreen = LauncherScreen.ALL_APPS,
                 )
@@ -483,8 +506,43 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
+    fun openSearchWithQuery(query: String) {
+        if (_uiState.value.isPinnedOnlyLocked) {
+            _uiState.update { it.copy(pinnedLockFeedbackMessage = "UltraFocus Mode Locked • Triple-tap to exit") }
+            return
+        }
+        if (_uiState.value.isBiometricLockEnabled) {
+            pendingSearchUnlock = true
+            pendingDisableBiometric = false
+            _uiState.update { it.copy(searchQuery = query, isScribbleSearchMode = true) }
+            if (_uiState.value.lockMethod == "pin") {
+                if (_uiState.value.customPin.isBlank()) {
+                    _uiState.update { it.copy(showSetPinDialog = true) }
+                } else {
+                    _uiState.update { it.copy(showPinUnlockSheet = true) }
+                }
+            } else {
+                _uiState.update { it.copy(pendingBiometricUnlock = true, biometricAuthTrigger = it.biometricAuthTrigger + 1) }
+            }
+        } else {
+            _uiState.update {
+                it.copy(
+                    isSearchOnlyMode = true,
+                    isScribbleSearchMode = true,
+                    searchQuery = query,
+                    currentScreen = LauncherScreen.ALL_APPS,
+                )
+            }
+        }
+    }
+
     fun setSearchQuery(query: String) {
-        _uiState.update { it.copy(searchQuery = query) }
+        _uiState.update { 
+            it.copy(
+                searchQuery = query,
+                isScribbleSearchMode = if (query.isBlank()) false else it.isScribbleSearchMode
+            ) 
+        }
     }
 
     fun openPinDialog(app: AppItem) {
@@ -1215,6 +1273,13 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         _uiState.update { it.copy(enableSwipeDownSearch = enabled) }
         viewModelScope.launch {
             repository.updateSetting("enable_swipe_down_search", enabled.toString())
+        }
+    }
+
+    fun setScribbleSearchEnabled(enabled: Boolean) {
+        _uiState.update { it.copy(enableScribbleSearch = enabled) }
+        viewModelScope.launch {
+            repository.updateSetting("enable_scribble_search", enabled.toString())
         }
     }
 

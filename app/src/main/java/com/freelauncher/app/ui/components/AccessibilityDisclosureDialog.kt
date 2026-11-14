@@ -87,6 +87,12 @@ fun AccessibilityDisclosureDialog(
                 )
                 
                 Text(
+                    text = "Banking App Note (Google Pay / UPI): Some payment & banking apps show security alerts if any Accessibility Service is enabled. NOMA Launcher does not overlay or read banking apps. If GPay shows a warning, you can temporarily pause or turn off Accessibility in Settings.",
+                    style = MaterialTheme.typography.bodySmall.copy(lineHeight = 18.sp),
+                    color = MaterialTheme.colorScheme.primary
+                )
+
+                Text(
                     text = "Tap “Agree and continue” to open Android Accessibility settings, where you can enable the service.",
                     style = MaterialTheme.typography.bodyMedium.copy(lineHeight = 20.sp),
                     color = MaterialTheme.colorScheme.onSurface

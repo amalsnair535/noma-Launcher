@@ -8,6 +8,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -28,6 +29,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalView
@@ -37,16 +39,29 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.freelauncher.app.data.models.AppItem
+import com.freelauncher.app.data.service.IconPackManager
+import com.freelauncher.app.data.service.InstalledAppMatcher
+import com.freelauncher.app.data.service.ScribbleRecognizer
 import com.freelauncher.app.ui.components.ClockStyle
 import com.freelauncher.app.ui.components.MinimalistClock
+import com.freelauncher.app.ui.components.ScribbleSearchOverlay
 import com.freelauncher.app.ui.components.getContextualGreeting
 import com.freelauncher.app.ui.util.DateTimeUtils
+import com.freelauncher.app.ui.util.GesturalAction
 import com.freelauncher.app.ui.util.LauncherHaptics
+import com.freelauncher.app.ui.util.ScribbleGestureCoordinator
+import com.freelauncher.app.ui.util.ScribblePoint
+import com.freelauncher.app.ui.util.ScribbleStroke
 import com.freelauncher.app.ui.viewmodel.LauncherScreen
 import com.freelauncher.app.ui.viewmodel.LauncherUiState
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import java.util.*
 import kotlin.math.abs
 import kotlin.math.roundToInt
+import kotlin.time.Duration.Companion.milliseconds
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -56,7 +71,10 @@ fun HomeScreen(
     onNavigate: (LauncherScreen) -> Unit,
     onOpenSettings: () -> Unit,
     modifier: Modifier = Modifier,
+    onLaunchApp: (AppItem) -> Unit = {},
+    onLongPressApp: (AppItem) -> Unit = {},
     onOpenSearch: () -> Unit = {},
+    onOpenSearchWithQuery: (String) -> Unit = {},
     onOpenDialer: () -> Unit = {},
     onOpenClock: () -> Unit = {},
     onOpenCalendar: () -> Unit = {},
@@ -66,7 +84,8 @@ fun HomeScreen(
     onResetTimeCardOffset: () -> Unit = {},
     onTimeCardScaleChanged: (Float) -> Unit = {},
     onClockEditModeToggled: (Boolean) -> Unit = {},
-    onToggleUltraFocus: () -> Unit = {}
+    onToggleUltraFocus: () -> Unit = {},
+    iconPackManager: IconPackManager? = null
 ) {
     BackHandler(enabled = true) {
         if (state.isClockEditMode) {
@@ -76,6 +95,25 @@ fun HomeScreen(
     }
 
     val context = androidx.compose.ui.platform.LocalContext.current
+    val scope = rememberCoroutineScope()
+
+    // On-Device ML Kit Scribble Recognizer Setup
+    val scribbleRecognizer = remember(context) { ScribbleRecognizer(context) }
+    DisposableEffect(scribbleRecognizer) {
+        onDispose { scribbleRecognizer.close() }
+    }
+
+    // Live Scribble Search State
+    var strokes by remember { mutableStateOf<List<ScribbleStroke>>(emptyList()) }
+    var currentStrokePoints by remember { mutableStateOf<List<ScribblePoint>>(emptyList()) }
+    var recognizedText by remember { mutableStateOf("") }
+    var matchingScribbleApps by remember { mutableStateOf<List<AppItem>>(emptyList()) }
+    var isRecognizing by remember { mutableStateOf(false) }
+    var recognitionJob by remember { mutableStateOf<Job?>(null) }
+    var lastScribbleTime by remember { mutableLongStateOf(0L) }
+
+    val currentStroke = if (currentStrokePoints.isNotEmpty()) ScribbleStroke(currentStrokePoints) else null
+
     val dateText by produceState(
         initialValue = DateTimeUtils.format(Calendar.getInstance().time, DateTimeUtils.Patterns.DATE_EEEE_MMMM_D),
         currentTimeFlow
@@ -101,9 +139,6 @@ fun HomeScreen(
     val configuration = androidx.compose.ui.platform.LocalConfiguration.current
     val isLandscape = configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
 
-    var totalDragX by remember { mutableFloatStateOf(0f) }
-    var totalDragY by remember { mutableFloatStateOf(0f) }
-
     // Realtime draggable coordinates for the Time Card
     var localOffsetX by remember(state.timeCardOffsetX) { mutableFloatStateOf(state.timeCardOffsetX) }
     var localOffsetY by remember(state.timeCardOffsetY) { mutableFloatStateOf(state.timeCardOffsetY) }
@@ -113,7 +148,6 @@ fun HomeScreen(
     var clockSwipeAccumulator by remember { mutableFloatStateOf(0f) }
     val allClockStyles = remember { ClockStyle.entries.toList() }
     val currentStyleIndex = allClockStyles.indexOf(state.clockStyle).coerceAtLeast(0)
-    // Use rememberUpdatedState to prevent stale capture in gesture lambdas
     val latestStyleIndex by rememberUpdatedState(currentStyleIndex)
 
     val isEditMode = state.isClockEditMode
@@ -137,7 +171,7 @@ fun HomeScreen(
         }
     }
 
-    // Triple tap tracking
+    // Multi-tap tracking for double tap to sleep and triple tap UltraFocus
     var rootTapCount by remember { mutableIntStateOf(0) }
     var lastRootTapTime by remember { mutableLongStateOf(0L) }
 
@@ -148,48 +182,6 @@ fun HomeScreen(
         modifier = modifier
             .fillMaxSize()
             .navigationBarsPadding()
-            .pointerInput(isEditMode, screenWidthPx) {
-                if (!isEditMode) {
-                    var isStartedInSafeZone = true
-                    detectDragGestures(
-                        onDragStart = { startOffset ->
-                            totalDragX = 0f
-                            totalDragY = 0f
-                            val gestureEdgeMargin = 32.dp.toPx()
-                            isStartedInSafeZone = startOffset.x in gestureEdgeMargin..(screenWidthPx - gestureEdgeMargin)
-                        },
-                        onDragEnd = {
-                            if (!isStartedInSafeZone) return@detectDragGestures
-                            val threshold = 60f
-                            if (abs(totalDragX) > abs(totalDragY)) {
-                                // Horizontal Swipe
-                                if (totalDragX < -threshold && state.showNewsFeed) {
-                                    // Swiped Left -> News Feed screen
-                                    onNavigate(LauncherScreen.RSS_FEED)
-                                } else if (totalDragX > threshold && state.showTimeAway) {
-                                    // Swiped Right -> Time Away screen
-                                    onNavigate(LauncherScreen.TIME_AWAY)
-                                }
-                            } else {
-                                // Vertical Swipe
-                                if (totalDragY < -threshold) {
-                                    // Swiped Up -> Six Apps screen
-                                    onNavigate(LauncherScreen.SIX_APPS)
-                                } else if (totalDragY > threshold && state.enableSwipeDownSearch) {
-                                    // Swiped Down -> Search
-                                    onOpenSearch()
-                                }
-                            }
-                        }
-                    ) { change, dragAmount ->
-                        if (isStartedInSafeZone) {
-                            change.consume()
-                            totalDragX += dragAmount.x
-                            totalDragY += dragAmount.y
-                        }
-                    }
-                }
-            }
             .combinedClickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,
@@ -198,33 +190,121 @@ fun HomeScreen(
                         onClockEditModeToggled(false)
                     } else {
                         val now = System.currentTimeMillis()
-                        if (now - lastRootTapTime < 450) {
-                            rootTapCount++
-                        } else {
-                            rootTapCount = 1
-                        }
-                        lastRootTapTime = now
-
-                        if (rootTapCount == 2) {
-                            if (state.enableDoubleTapToSleep) {
-                                LauncherHaptics.playClick(context)
-                                onDoubleTapToSleep()
+                        val isDrawingActive = (now - lastScribbleTime) < 700L
+                        if (!isDrawingActive) {
+                            if (now - lastRootTapTime < 450) {
+                                rootTapCount++
+                            } else {
+                                rootTapCount = 1
                             }
-                        } else if (rootTapCount >= 3) {
-                            rootTapCount = 0
-                            LauncherHaptics.playClick(context)
-                            onToggleUltraFocus()
-                        } else {
-                            // Single tap on Home screen background does NOT launch apps
+                            lastRootTapTime = now
+
+                            if (rootTapCount == 2) {
+                                if (state.enableDoubleTapToSleep) {
+                                    LauncherHaptics.playClick(context)
+                                    onDoubleTapToSleep()
+                                }
+                            } else if (rootTapCount >= 3) {
+                                rootTapCount = 0
+                                LauncherHaptics.playClick(context)
+                                onToggleUltraFocus()
+                            }
                         }
                     }
                 },
                 onLongClick = {
-                    if (!isEditMode) {
+                    val now = System.currentTimeMillis()
+                    val isDrawingOrRecent = currentStrokePoints.isNotEmpty() || strokes.isNotEmpty() || (now - lastScribbleTime < 800L)
+                    if (!isEditMode && !isDrawingOrRecent) {
                         onOpenSettings()
                     }
                 }
             )
+            .pointerInput(isEditMode, screenWidthPx, state.installedApps, state.enableScribbleSearch) {
+                if (!isEditMode) {
+                    awaitPointerEventScope {
+                        while (true) {
+                            val down = awaitFirstDown(requireUnconsumed = false)
+                            val strokePoints = mutableListOf<ScribblePoint>()
+                            strokePoints.add(ScribblePoint(down.position.x, down.position.y))
+                            if (state.enableScribbleSearch) {
+                                currentStrokePoints = strokePoints.toList()
+                            }
+
+                            val pointerId = down.id
+
+                            while (true) {
+                                val event = awaitPointerEvent()
+                                val dragChange = event.changes.find { it.id == pointerId } ?: break
+
+                                if (dragChange.pressed) {
+                                    val dx = dragChange.position.x - down.position.x
+                                    val dy = dragChange.position.y - down.position.y
+                                    if (kotlin.math.hypot(dx, dy) > 12f) {
+                                        lastScribbleTime = System.currentTimeMillis()
+                                        strokePoints.add(ScribblePoint(dragChange.position.x, dragChange.position.y))
+                                        if (state.enableScribbleSearch) {
+                                            currentStrokePoints = strokePoints.toList()
+                                        }
+                                    }
+                                } else {
+                                    break
+                                }
+                            }
+
+                            val completedStrokePoints = strokePoints.toList()
+                            currentStrokePoints = emptyList()
+
+                            if (completedStrokePoints.size > 1) {
+                                val gesturalAction = ScribbleGestureCoordinator.analyzeStroke(
+                                    points = completedStrokePoints,
+                                    screenWidthPx = screenWidthPx
+                                )
+
+                                when (gesturalAction) {
+                                    GesturalAction.SWIPE_UP -> onNavigate(LauncherScreen.SIX_APPS)
+                                    GesturalAction.SWIPE_DOWN -> if (state.enableSwipeDownSearch) onOpenSearch()
+                                    GesturalAction.SWIPE_LEFT -> if (state.showNewsFeed) onNavigate(LauncherScreen.RSS_FEED)
+                                    GesturalAction.SWIPE_RIGHT -> if (state.showTimeAway) onNavigate(LauncherScreen.TIME_AWAY)
+                                    GesturalAction.HANDWRITING_STROKE -> {
+                                        if (state.enableScribbleSearch) {
+                                            lastScribbleTime = System.currentTimeMillis()
+                                            val newStrokes = strokes + ScribbleStroke(completedStrokePoints)
+                                            strokes = newStrokes
+
+                                            recognitionJob?.cancel()
+                                            recognitionJob = scope.launch {
+                                                isRecognizing = true
+                                                delay(180.milliseconds)
+                                                val candidates = scribbleRecognizer.recognizeStrokes(newStrokes)
+                                                isRecognizing = false
+                                                if (candidates.isNotEmpty()) {
+                                                    val rawCandidate = candidates.first().trim()
+                                                    val resolvedCandidate = when {
+                                                        rawCandidate.equals("i", ignoreCase = true) || rawCandidate == "1" || rawCandidate == "|" -> {
+                                                            if (candidates.any { it.equals("l", ignoreCase = true) } && !candidates.any { it.equals("i", ignoreCase = true) }) "L" else "I"
+                                                        }
+                                                        rawCandidate.equals("l", ignoreCase = true) -> "L"
+                                                        else -> rawCandidate
+                                                    }
+                                                    if (resolvedCandidate.isNotBlank()) {
+                                                        strokes = emptyList()
+                                                        currentStrokePoints = emptyList()
+                                                        recognizedText = ""
+                                                        matchingScribbleApps = emptyList()
+                                                        onOpenSearchWithQuery(resolvedCandidate)
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                    GesturalAction.NONE -> { /* Quick touch or tap */ }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
             .testTag("home_screen_root")
     ) {
         // Edge gesture hints when not editing (Only shown if gesture hints setting is enabled)
@@ -331,224 +411,223 @@ fun HomeScreen(
                         .padding(horizontal = 12.dp)
                 ) {
                     // Interactive Clock Card
-                Box(
-                    modifier = Modifier
-                        .scale(clockAnimScale)
-                        .clip(RoundedCornerShape(28.dp))
-                        .then(
-                            if (isEditMode) {
-                                Modifier
-                                    .background(
-                                        if (isDraggingCard)
-                                            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f)
-                                        else
-                                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f)
-                                    )
-                                    .border(
-                                        if (isDraggingCard) 2.5.dp else 1.5.dp,
-                                        MaterialTheme.colorScheme.primary,
-                                        RoundedCornerShape(28.dp)
-                                    )
-                                    .padding(vertical = 16.dp, horizontal = 18.dp)
-                            } else {
-                                Modifier.padding(vertical = 6.dp, horizontal = 8.dp)
-                            }
-                        )
-                        .pointerInput(isEditMode) {
-                            if (isEditMode) {
-                                detectHorizontalDragGestures(
-                                    onDragStart = {
-                                        clockSwipeAccumulator = 0f
-                                    },
-                                    onDragEnd = {
-                                        val swipeThreshold = 50f
-                                        if (clockSwipeAccumulator < -swipeThreshold) {
-                                            val nextIndex = (latestStyleIndex + 1) % allClockStyles.size
-                                            val targetStyle = allClockStyles[nextIndex]
-                                            onClockStyleChanged(targetStyle)
-                                        } else if (clockSwipeAccumulator > swipeThreshold) {
-                                            val prevIndex = if ((latestStyleIndex - 1) < 0) allClockStyles.size - 1 else latestStyleIndex - 1
-                                            val targetStyle = allClockStyles[prevIndex]
-                                            onClockStyleChanged(targetStyle)
+                    Box(
+                        modifier = Modifier
+                            .scale(clockAnimScale)
+                            .clip(RoundedCornerShape(28.dp))
+                            .then(
+                                if (isEditMode) {
+                                    Modifier
+                                        .background(
+                                            if (isDraggingCard)
+                                                MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f)
+                                            else
+                                                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f)
+                                        )
+                                        .border(
+                                            if (isDraggingCard) 2.5.dp else 1.5.dp,
+                                            MaterialTheme.colorScheme.primary,
+                                            RoundedCornerShape(28.dp)
+                                        )
+                                        .padding(vertical = 16.dp, horizontal = 18.dp)
+                                } else {
+                                    Modifier.padding(vertical = 6.dp, horizontal = 8.dp)
+                                }
+                            )
+                            .pointerInput(isEditMode) {
+                                if (isEditMode) {
+                                    detectHorizontalDragGestures(
+                                        onDragStart = {
+                                            clockSwipeAccumulator = 0f
+                                        },
+                                        onDragEnd = {
+                                            val swipeThreshold = 50f
+                                            if (clockSwipeAccumulator < -swipeThreshold) {
+                                                val nextIndex = (latestStyleIndex + 1) % allClockStyles.size
+                                                val targetStyle = allClockStyles[nextIndex]
+                                                onClockStyleChanged(targetStyle)
+                                            } else if (clockSwipeAccumulator > swipeThreshold) {
+                                                val prevIndex = if ((latestStyleIndex - 1) < 0) allClockStyles.size - 1 else latestStyleIndex - 1
+                                                val targetStyle = allClockStyles[prevIndex]
+                                                onClockStyleChanged(targetStyle)
+                                            }
+                                            clockSwipeAccumulator = 0f
                                         }
-                                        clockSwipeAccumulator = 0f
+                                    ) { change, dragAmount ->
+                                        change.consume()
+                                        clockSwipeAccumulator += dragAmount
                                     }
-                                ) { change, dragAmount ->
-                                    change.consume()
-                                    clockSwipeAccumulator += dragAmount
                                 }
                             }
-                        }
-                        .combinedClickable(
-                            interactionSource = remember { MutableInteractionSource() },
-                            indication = null,
-                            onClick = {
-                                if (!isEditMode) {
-                                    onOpenClock()
+                            .combinedClickable(
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null,
+                                onClick = {
+                                    if (!isEditMode) {
+                                        onOpenClock()
+                                    }
+                                },
+                                onLongClick = {
+                                    onClockEditModeToggled(true)
                                 }
-                            },
-                            onLongClick = {
-                                // Long-pressing time enters Clock Edit Mode to drag & place anywhere
-                                onClockEditModeToggled(true)
-                            }
-                        )
-                        .testTag("minimalist_clock_container"),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.Center
+                            )
+                            .testTag("minimalist_clock_container"),
+                        contentAlignment = Alignment.Center
                     ) {
-                        MinimalistClock(
-                            timeFlow = currentTimeFlow,
-                            clockStyle = state.clockStyle,
-                            modifier = Modifier.testTag("minimalist_clock")
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.Center
+                        ) {
+                            MinimalistClock(
+                                timeFlow = currentTimeFlow,
+                                clockStyle = state.clockStyle,
+                                modifier = Modifier.testTag("minimalist_clock")
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    // Date
+                    Text(
+                        text = dateText,
+                        style = MaterialTheme.typography.titleMedium.copy(
+                            fontWeight = FontWeight.Normal,
+                            letterSpacing = 0.5.sp
+                        ),
+                        color = MaterialTheme.colorScheme.secondary,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier
+                            .scale(clockAnimScale.coerceAtMost(1.2f))
+                            .clip(RoundedCornerShape(12.dp))
+                            .clickable {
+                                if (!isEditMode) {
+                                    onOpenCalendar()
+                                }
+                            }
+                            .padding(horizontal = 8.dp, vertical = 4.dp)
+                            .testTag("home_date_text")
+                    )
+
+                    // Text-Only Weather & Battery Glance
+                    if (state.showWeatherBatteryGlance) {
+                        val batteryStr = if (state.isBatteryCharging) "⚡ ${state.batteryLevel}%" else "${state.batteryLevel}%"
+                        val weatherPart = state.weatherText ?: if (state.temperatureUnit == "C") "22°C Clear" else "72°F Clear"
+                        val glanceText = "$weatherPart • $batteryStr"
+
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = glanceText,
+                            style = MaterialTheme.typography.bodyMedium.copy(
+                                fontWeight = FontWeight.Medium,
+                                letterSpacing = 0.5.sp,
+                                fontSize = 13.sp
+                            ),
+                            color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.85f),
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier
+                                .scale(clockAnimScale.coerceAtMost(1.15f))
+                                .testTag("home_weather_battery_glance")
                         )
                     }
-                }
 
-                Spacer(modifier = Modifier.height(10.dp))
+                    Spacer(modifier = Modifier.height(10.dp))
 
-                // Date
-                Text(
-                    text = dateText,
-                    style = MaterialTheme.typography.titleMedium.copy(
-                        fontWeight = FontWeight.Normal,
-                        letterSpacing = 0.5.sp
-                    ),
-                    color = MaterialTheme.colorScheme.secondary,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier
-                        .scale(clockAnimScale.coerceAtMost(1.2f))
-                        .clip(RoundedCornerShape(12.dp))
-                        .clickable {
-                            if (!isEditMode) {
-                                onOpenCalendar()
+                    // Quick Action Icons Row: Search Lens & Dialer Icon
+                    if (!isEditMode) {
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(14.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .scale(clockAnimScale.coerceAtMost(1.1f))
+                                .padding(vertical = 4.dp)
+                        ) {
+                            // Search Lens Icon Button
+                            Surface(
+                                onClick = onOpenSearch,
+                                shape = CircleShape,
+                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+                                border = androidx.compose.foundation.BorderStroke(
+                                    0.8.dp,
+                                    MaterialTheme.colorScheme.outline.copy(alpha = 0.25f)
+                                ),
+                                modifier = Modifier.size(38.dp).testTag("home_search_lens_button")
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(
+                                        imageVector = Icons.Default.Search,
+                                        contentDescription = "Search Lens",
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.85f),
+                                        modifier = Modifier.size(17.dp)
+                                    )
+                                }
+                            }
+
+                            // Dialer Icon Button
+                            Surface(
+                                onClick = onOpenDialer,
+                                shape = CircleShape,
+                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+                                border = androidx.compose.foundation.BorderStroke(
+                                    0.8.dp,
+                                    MaterialTheme.colorScheme.outline.copy(alpha = 0.25f)
+                                ),
+                                modifier = Modifier.size(38.dp).testTag("home_dialer_button")
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(
+                                        imageVector = Icons.Outlined.Call,
+                                        contentDescription = "Open Dialer",
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.85f),
+                                        modifier = Modifier.size(17.dp)
+                                    )
+                                }
                             }
                         }
-                        .padding(horizontal = 8.dp, vertical = 4.dp)
-                        .testTag("home_date_text")
-                )
 
-                // Text-Only Weather & Battery Glance
-                if (state.showWeatherBatteryGlance) {
-                    val batteryStr = if (state.isBatteryCharging) "⚡ ${state.batteryLevel}%" else "${state.batteryLevel}%"
-                    val weatherPart = state.weatherText ?: if (state.temperatureUnit == "C") "22°C Clear" else "72°F Clear"
-                    val glanceText = "$weatherPart • $batteryStr"
+                        Spacer(modifier = Modifier.height(8.dp))
+                    }
 
-                    Spacer(modifier = Modifier.height(4.dp))
+                    // Contextual Greeting
                     Text(
-                        text = glanceText,
+                        text = greetingText,
                         style = MaterialTheme.typography.bodyMedium.copy(
-                            fontWeight = FontWeight.Medium,
-                            letterSpacing = 0.5.sp,
-                            fontSize = 13.sp
+                            fontWeight = FontWeight.Light,
+                            letterSpacing = 1.sp
                         ),
-                        color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.85f),
+                        color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.8f),
                         textAlign = TextAlign.Center,
                         modifier = Modifier
                             .scale(clockAnimScale.coerceAtMost(1.15f))
-                            .testTag("home_weather_battery_glance")
+                            .testTag("contextual_greeting_text")
                     )
-                }
 
-                Spacer(modifier = Modifier.height(10.dp))
+                    // Phone-Free Today Time Indicator
+                    if (state.showTimeAway && state.hasUsagePermission && state.timeAwayStats != null) {
+                        val todayMins = state.timeAwayStats.todayPhoneFreeMinutes
+                        val hrs = todayMins / 60
+                        val mins = todayMins % 60
+                        val timeFormatted = if (hrs > 0) "${hrs}h ${mins}m" else "${mins}m"
 
-                // Quick Action Icons Row: Search Lens & Dialer Icon (Between Date and Greetings)
-                if (!isEditMode) {
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(14.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier
-                            .scale(clockAnimScale.coerceAtMost(1.1f))
-                            .padding(vertical = 4.dp)
-                    ) {
-                        // Search Lens Icon Button
-                        Surface(
-                            onClick = onOpenSearch,
-                            shape = CircleShape,
-                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
-                            border = androidx.compose.foundation.BorderStroke(
-                                0.8.dp,
-                                MaterialTheme.colorScheme.outline.copy(alpha = 0.25f)
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "$timeFormatted phone-free today",
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                fontWeight = FontWeight.Medium,
+                                letterSpacing = 0.5.sp
                             ),
-                            modifier = Modifier.size(38.dp).testTag("home_search_lens_button")
-                        ) {
-                            Box(contentAlignment = Alignment.Center) {
-                                Icon(
-                                    imageVector = Icons.Default.Search,
-                                    contentDescription = "Search Lens",
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.85f),
-                                    modifier = Modifier.size(17.dp)
-                                )
-                            }
-                        }
-
-                        // Dialer Icon Button
-                        Surface(
-                            onClick = onOpenDialer,
-                            shape = CircleShape,
-                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
-                            border = androidx.compose.foundation.BorderStroke(
-                                0.8.dp,
-                                MaterialTheme.colorScheme.outline.copy(alpha = 0.25f)
-                            ),
-                            modifier = Modifier.size(38.dp).testTag("home_dialer_button")
-                        ) {
-                            Box(contentAlignment = Alignment.Center) {
-                                Icon(
-                                    imageVector = Icons.Outlined.Call,
-                                    contentDescription = "Open Dialer",
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.85f),
-                                    modifier = Modifier.size(17.dp)
-                                )
-                            }
-                        }
+                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.85f),
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier
+                                .scale(clockAnimScale.coerceAtMost(1.1f))
+                                .testTag("home_phone_free_today_text")
+                        )
                     }
-
-                    Spacer(modifier = Modifier.height(8.dp))
-                }
-
-                // Contextual Greeting
-                Text(
-                    text = greetingText,
-                    style = MaterialTheme.typography.bodyMedium.copy(
-                        fontWeight = FontWeight.Light,
-                        letterSpacing = 1.sp
-                    ),
-                    color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.8f),
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier
-                        .scale(clockAnimScale.coerceAtMost(1.15f))
-                        .testTag("contextual_greeting_text")
-                )
-
-                // Phone-Free Today Time Indicator
-                if (state.showTimeAway && state.hasUsagePermission && state.timeAwayStats != null) {
-                    val todayMins = state.timeAwayStats.todayPhoneFreeMinutes
-                    val hrs = todayMins / 60
-                    val mins = todayMins % 60
-                    val timeFormatted = if (hrs > 0) "${hrs}h ${mins}m" else "${mins}m"
-
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        text = "$timeFormatted phone-free today",
-                        style = MaterialTheme.typography.labelSmall.copy(
-                            fontWeight = FontWeight.Medium,
-                            letterSpacing = 0.5.sp
-                        ),
-                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.85f),
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier
-                            .scale(clockAnimScale.coerceAtMost(1.1f))
-                            .testTag("home_phone_free_today_text")
-                    )
-                }
                 }
             }
         }
 
-        // Clock & Time Card Edit Overlay Panel at Bottom (Only Style & Resize Tabs)
+        // Clock & Time Card Edit Overlay Panel at Bottom
         if (isEditMode) {
             Surface(
                 modifier = Modifier
@@ -571,7 +650,6 @@ fun HomeScreen(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    // Category Tab Row: Style & Resize only (Position is replaced by free drag & placement)
                     PrimaryTabRow(
                         selectedTabIndex = editTab,
                         containerColor = Color.Transparent,
@@ -591,7 +669,6 @@ fun HomeScreen(
                     }
 
                     when (editTab) {
-                        // TAB 0: Style Carousel
                         0 -> {
                             Column(
                                 modifier = Modifier.fillMaxWidth(),
@@ -636,13 +713,11 @@ fun HomeScreen(
                                 )
                             }
                         }
-                        // TAB 1: Resize & Scaling Option + Drag-to-Place Guide
                         1 -> {
                             Column(
                                 modifier = Modifier.fillMaxWidth(),
                                 verticalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
-                                // Preset size chips
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.SpaceBetween
@@ -663,7 +738,6 @@ fun HomeScreen(
                                         )
                                     }
                                 }
-                                // Interactive Slider
                                 Row(
                                     verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -687,7 +761,6 @@ fun HomeScreen(
                                         modifier = Modifier.width(44.dp)
                                     )
                                 }
-                                // Reset position button
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -716,7 +789,6 @@ fun HomeScreen(
                         }
                     }
 
-                    // Save / Apply Done Button
                     Button(
                         onClick = { onClockEditModeToggled(false) },
                         shape = RoundedCornerShape(14.dp),
@@ -737,6 +809,45 @@ fun HomeScreen(
             }
         }
 
+        // 5. Direct Home Screen Scribble Search Live Ink Canvas & Overlay
+        if (!isEditMode && state.enableScribbleSearch) {
+            ScribbleSearchOverlay(
+                strokes = strokes,
+                currentStroke = currentStroke,
+                recognizedText = recognizedText,
+                matchingApps = matchingScribbleApps,
+                isRecognizing = isRecognizing,
+                onLaunchApp = { app ->
+                    strokes = emptyList()
+                    currentStrokePoints = emptyList()
+                    recognizedText = ""
+                    matchingScribbleApps = emptyList()
+                    onLaunchApp(app)
+                },
+                onLongPressApp = { app ->
+                    strokes = emptyList()
+                    currentStrokePoints = emptyList()
+                    recognizedText = ""
+                    matchingScribbleApps = emptyList()
+                    onLongPressApp(app)
+                },
+                onClearScribble = {
+                    strokes = emptyList()
+                    currentStrokePoints = emptyList()
+                    recognizedText = ""
+                    matchingScribbleApps = emptyList()
+                },
+                iconPackManager = iconPackManager,
+                appDrawerStyle = state.appDrawerStyle,
+                showMonograms = state.showMonograms,
+                iconDisplayMode = state.iconDisplayMode,
+                selectedIconPackPackage = state.selectedIconPackPackage,
+                minimalConfig = state.minimalIconPackConfig,
+                allAppsAlignment = state.allAppsAlignment,
+                sixAppsScale = state.sixAppsScale
+            )
+        }
+
         // Bottom gesture hint when not in edit mode (Only shown if gesture hints setting is enabled)
         if (!isEditMode && state.showGestureHints) {
             Column(
@@ -751,7 +862,7 @@ fun HomeScreen(
                     modifier = Modifier.padding(horizontal = 16.dp)
                 ) {
                     Text(
-                        text = "Tap for apps • Long press for settings • Long press time to drag & edit",
+                        text = "Tap for apps • Draw on screen to search • Long press settings",
                         style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
                         color = MaterialTheme.colorScheme.secondary.copy(alpha = 0.4f),
                         textAlign = TextAlign.Center

@@ -46,6 +46,7 @@ googleid = "1.1.1"
 biometric = "1.2.0-alpha05"
 firebaseCrashlyticsPlugin = "3.0.2"
 playAppUpdate = "2.1.0"
+mlkitDigitalInk = "18.1.0"
 
 
 [libraries]
@@ -109,6 +110,7 @@ firebase-crashlytics = { group = "com.google.firebase", name = "firebase-crashly
 firebase-analytics = { group = "com.google.firebase", name = "firebase-analytics" }
 playAppUpdate = { group = "com.google.android.play", name = "app-update", version.ref = "playAppUpdate" }
 playAppUpdateKtx = { group = "com.google.android.play", name = "app-update-ktx", version.ref = "playAppUpdate" }
+mlkitDigitalInk = { group = "com.google.mlkit", name = "digital-ink-recognition", version.ref = "mlkitDigitalInk" }
 
 
 [plugins]

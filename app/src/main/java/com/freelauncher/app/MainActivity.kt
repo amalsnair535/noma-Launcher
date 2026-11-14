@@ -233,6 +233,13 @@ class MainActivity : FragmentActivity() {
                             contentScale = ContentScale.Crop,
                             modifier = Modifier.fillMaxSize(),
                         )
+                    } else if (currentWallpaper.drawableResId != null) {
+                        androidx.compose.foundation.Image(
+                            painter = androidx.compose.ui.res.painterResource(currentWallpaper.drawableResId),
+                            contentDescription = currentWallpaper.name,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.fillMaxSize()
+                        )
                     } else {
                         Box(
                             modifier = Modifier
@@ -310,7 +317,10 @@ class MainActivity : FragmentActivity() {
                                     currentTimeFlow = viewModel.currentTime,
                                     onNavigate = onNavigate,
                                     onOpenSettings = onOpenSettings,
+                                    onLaunchApp = onLaunchApp,
+                                    onLongPressApp = onLongPressApp,
                                     onOpenSearch = { viewModel.openSearchFromHome() },
+                                    onOpenSearchWithQuery = { query -> viewModel.openSearchWithQuery(query) },
                                     onOpenDialer = { viewModel.openDialerApp(context) },
                                     onOpenClock = { viewModel.openClockApp(context) },
                                     onOpenCalendar = { viewModel.openCalendarApp(context) },
@@ -320,7 +330,8 @@ class MainActivity : FragmentActivity() {
                                     onResetTimeCardOffset = onResetTimeCardOffset,
                                     onTimeCardScaleChanged = onTimeCardScaleChanged,
                                     onClockEditModeToggled = { onClockEditModeToggled(it) },
-                                    onToggleUltraFocus = { onToggleLock() }
+                                    onToggleUltraFocus = { onToggleLock() },
+                                    iconPackManager = viewModel.iconPackManager
                                 )
                             }
                             LauncherScreen.SIX_APPS -> {
@@ -345,9 +356,7 @@ class MainActivity : FragmentActivity() {
                                     onLongPressApp = onLongPressApp,
                                     onNavigate = onNavigate,
                                     onSearchQueryChange = onSearchQueryChange,
-                                    iconPackManager = viewModel.iconPackManager,
-                                    onOpenCategoryManager = onOpenCategoryManager,
-                                    onOpenAddCategory = onOpenAddCategory,
+                                    iconPackManager = viewModel.iconPackManager
                                 )
                             }
                             LauncherScreen.RSS_FEED -> {
@@ -451,6 +460,7 @@ class MainActivity : FragmentActivity() {
                             showWeatherBatteryGlance = state.showWeatherBatteryGlance,
                             enableDoubleTapToSleep = state.enableDoubleTapToSleep,
                             enableSwipeDownSearch = state.enableSwipeDownSearch,
+                            enableScribbleSearch = state.enableScribbleSearch,
                             enableMindfulPause = state.enableMindfulPause,
                             sixAppsScale = state.sixAppsScale,
                             temperatureUnit = state.temperatureUnit,
@@ -466,6 +476,7 @@ class MainActivity : FragmentActivity() {
                             onGestureHintsToggled = { viewModel.setShowGestureHints(it) },
                             onDoubleTapToSleepToggled = { viewModel.setDoubleTapToSleepEnabled(it) },
                             onSwipeDownSearchToggled = { viewModel.setSwipeDownSearchEnabled(it) },
+                            onScribbleSearchToggled = { viewModel.setScribbleSearchEnabled(it) },
                             onMindfulPauseToggled = { viewModel.setMindfulPauseEnabled(it) },
                             onSixAppsScaleChanged = { viewModel.setSixAppsScale(it) },
                             onNewsFeedToggled = { viewModel.setShowNewsFeed(it) },
@@ -490,8 +501,6 @@ class MainActivity : FragmentActivity() {
                             onIconDisplayModeChanged = { viewModel.setIconDisplayMode(it) },
                             onSelectedIconPackChanged = { viewModel.setSelectedIconPack(it) },
                             onOpenMinimalIconPackCreator = { viewModel.setShowMinimalIconPackCreator(true) },
-                            appDrawerStyle = state.appDrawerStyle,
-                            onAppDrawerStyleChanged = { viewModel.setAppDrawerStyle(it) },
                             hideEverythingOnHome = state.hideEverythingOnHome,
                             onHideEverythingOnHomeToggled = { viewModel.setHideEverythingOnHome(it) },
                         ) { viewModel.setSettingsSheetVisible(visible = false) }

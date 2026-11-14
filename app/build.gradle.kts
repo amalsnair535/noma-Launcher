@@ -1,4 +1,13 @@
 import com.google.gms.googleservices.GoogleServicesPlugin.MissingGoogleServicesStrategy
+import java.io.File
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
+import org.gradle.api.tasks.InputDirectory
+import org.gradle.api.tasks.OutputDirectory
+import org.gradle.api.tasks.Optional
+import org.gradle.api.tasks.PathSensitive
+import org.gradle.api.tasks.PathSensitivity
+import org.gradle.api.tasks.TaskAction
 
 plugins {
   alias(libs.plugins.android.application)
@@ -18,8 +27,8 @@ android {
     applicationId = "com.freelauncher.app"
     minSdk = 24
     targetSdk = 37
-    versionCode = 29
-    versionName = "4.1"
+    versionCode = 33
+    versionName = "4.5"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }
@@ -76,6 +85,104 @@ android {
     includeInApk = false
     includeInBundle = true
   }
+  packaging {
+    jniLibs {
+      useLegacyPackaging = false
+    }
+  }
+}
+
+abstract class AlignElf16KbTask : DefaultTask() {
+  @get:InputDirectory
+  @get:Optional
+  @get:PathSensitive(PathSensitivity.RELATIVE)
+  abstract val jniDir1: DirectoryProperty
+
+  @get:OutputDirectory
+  @get:Optional
+  abstract val outDir1: DirectoryProperty
+
+  @get:InputDirectory
+  @get:Optional
+  @get:PathSensitive(PathSensitivity.RELATIVE)
+  abstract val jniDir2: DirectoryProperty
+
+  @get:OutputDirectory
+  @get:Optional
+  abstract val outDir2: DirectoryProperty
+
+  @get:InputDirectory
+  @get:Optional
+  @get:PathSensitive(PathSensitivity.RELATIVE)
+  abstract val jniDir3: DirectoryProperty
+
+  @get:OutputDirectory
+  @get:Optional
+  abstract val outDir3: DirectoryProperty
+
+  @TaskAction
+  fun process() {
+    listOfNotNull(jniDir1.orNull, jniDir2.orNull, jniDir3.orNull).forEach { dirProp ->
+      val dir = dirProp.asFile
+      if (dir.exists()) {
+        dir.walkTopDown().filter { it.isFile && it.extension == "so" }.forEach { file ->
+          patchElf(file)
+        }
+      }
+    }
+  }
+
+  private fun patchElf(file: File): Boolean {
+    if (!file.exists() || file.extension != "so") return false
+    val bytes = file.readBytes()
+    if (bytes.size < 64) return false
+    if (bytes[0] != 0x7F.toByte() || bytes[1] != 0x45.toByte() || bytes[2] != 0x4C.toByte() || bytes[3] != 0x46.toByte()) return false
+    if (bytes[4] != 2.toByte() || bytes[5] != 1.toByte()) return false
+
+    val buffer = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN)
+    val e_phoff = buffer.getLong(0x20)
+    val e_phentsize = buffer.getShort(0x36).toInt()
+    val e_phnum = buffer.getShort(0x38).toInt()
+
+    var modified = false
+    for (i in 0 until e_phnum) {
+      val phOffset = (e_phoff + i * e_phentsize).toInt()
+      if (phOffset + 0x38 > bytes.size) break
+      val p_type = buffer.getInt(phOffset)
+      if (p_type == 1) { // PT_LOAD
+        val p_align = buffer.getLong(phOffset + 0x30)
+        if (p_align < 0x4000L) { // Less than 16 KB (16384)
+          buffer.putLong(phOffset + 0x30, 0x4000L)
+          modified = true
+        }
+      }
+    }
+
+    if (modified) {
+      file.writeBytes(bytes)
+    }
+    return modified
+  }
+}
+
+val alignElfTask = tasks.register("alignElf16Kb", AlignElf16KbTask::class.java) {
+  description = "Aligns ELF program headers for 16 KB page size compatibility"
+  val d1 = layout.buildDirectory.dir("intermediates/merged_jni_libs")
+  val d2 = layout.buildDirectory.dir("intermediates/merged_native_libs")
+  val d3 = layout.buildDirectory.dir("intermediates/stripped_native_libs")
+  jniDir1.set(d1)
+  outDir1.set(d1)
+  jniDir2.set(d2)
+  outDir2.set(d2)
+  jniDir3.set(d3)
+  outDir3.set(d3)
+  mustRunAfter(tasks.matching { 
+    (it.name.startsWith("merge") && (it.name.contains("Jni") || it.name.contains("Native"))) || it.name.startsWith("strip") || it.name.startsWith("extract")
+  })
+}
+
+tasks.matching { it.name.startsWith("package") }.configureEach {
+  dependsOn(alignElfTask)
 }
 
 // Configure the Secrets Gradle Plugin to use .env and .env.example files
@@ -91,10 +198,9 @@ googleServices { missingGoogleServicesStrategy = MissingGoogleServicesStrategy.W
 // Some unused dependencies are commented out below instead of being removed.
 // This makes it easy to add them back in the future if needed.
 dependencies {
-  val bom = libs.androidx.compose.bom
-  add("implementation", platform(bom))
-  add("testImplementation", platform(bom))
-  add("androidTestImplementation", platform(bom))
+  implementation(platform(libs.androidx.compose.bom))
+  testImplementation(platform(libs.androidx.compose.bom))
+  androidTestImplementation(platform(libs.androidx.compose.bom))
   implementation(platform(libs.firebase.bom))
   implementation(libs.androidx.activity.compose)
   implementation(libs.androidx.fragment.ktx)
@@ -126,7 +232,8 @@ dependencies {
   implementation(libs.playAppUpdate)
   implementation(libs.playAppUpdateKtx)
   implementation(libs.play.services.location)
-  implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.10.2")
+  implementation(libs.mlkitDigitalInk)
+  implementation(libs.kotlinx.coroutines.play.services)
   testImplementation(libs.androidx.core)
   testImplementation(libs.junit)
   testImplementation(libs.kotlinx.coroutines.test)
@@ -136,10 +243,10 @@ dependencies {
   testImplementation(libs.roborazzi.junit.rule)
   androidTestImplementation(libs.androidx.espresso.core)
   androidTestImplementation(libs.androidx.runner)
-  add("testImplementation", libs.androidx.junit.get())
-  add("testImplementation", libs.androidx.compose.ui.test.junit4.get())
-  add("androidTestImplementation", libs.androidx.junit.get())
-  add("androidTestImplementation", libs.androidx.compose.ui.test.junit4.get())
+  testImplementation(libs.androidx.junit)
+  testImplementation(libs.androidx.compose.ui.test.junit4)
+  androidTestImplementation(libs.androidx.junit)
+  androidTestImplementation(libs.androidx.compose.ui.test.junit4)
   debugImplementation(libs.androidx.compose.ui.test.manifest)
   debugImplementation(libs.androidx.compose.ui.tooling)
   "ksp"(libs.androidx.room.compiler)
