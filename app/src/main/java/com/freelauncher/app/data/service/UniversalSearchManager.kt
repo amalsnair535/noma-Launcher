@@ -113,14 +113,22 @@ object UniversalSearchManager {
         )
     )
 
-    fun searchSettings(query: String): List<SettingSearchResult> {
+    fun searchSettings(query: String, isScribbleSearch: Boolean = false): List<SettingSearchResult> {
         val cleanQuery = query.trim().lowercase(Locale.ROOT)
         if (cleanQuery.isBlank()) return emptyList()
 
         return SYSTEM_SETTINGS.filter { setting ->
-            setting.title.lowercase(Locale.ROOT).contains(cleanQuery) ||
-            setting.description.lowercase(Locale.ROOT).contains(cleanQuery) ||
-            setting.keywords.any { it.contains(cleanQuery) || cleanQuery.contains(it) }
+            val titleLower = setting.title.lowercase(Locale.ROOT)
+            val descLower = setting.description.lowercase(Locale.ROOT)
+            if (isScribbleSearch) {
+                titleLower.startsWith(cleanQuery) ||
+                titleLower.split(" ", "-", "&").any { it.startsWith(cleanQuery) } ||
+                setting.keywords.any { it.startsWith(cleanQuery) }
+            } else {
+                titleLower.contains(cleanQuery) ||
+                descLower.contains(cleanQuery) ||
+                setting.keywords.any { it.contains(cleanQuery) || cleanQuery.contains(it) }
+            }
         }.take(5)
     }
 

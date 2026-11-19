@@ -129,7 +129,7 @@ fun AllAppsRowItem(
             horizontalArrangement = rowArrangement,
             modifier = Modifier.weight(1f)
         ) {
-            val shouldShowIcon = iconDisplayMode != com.freelauncher.app.data.models.IconDisplayMode.TEXT_ONLY
+            val shouldShowIcon = iconDisplayMode != com.freelauncher.app.data.models.IconDisplayMode.TEXT_ONLY && alignment == com.freelauncher.app.data.models.AllAppsAlignment.LEFT
             if (shouldShowIcon) {
                 com.freelauncher.app.ui.components.AppIcon(
                     app = app,

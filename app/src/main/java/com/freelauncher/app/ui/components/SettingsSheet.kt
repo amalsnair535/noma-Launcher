@@ -47,6 +47,8 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
 import coil.compose.AsyncImage
 import com.freelauncher.app.BuildConfig
 import com.freelauncher.app.ui.theme.LauncherFont
@@ -56,7 +58,7 @@ import java.io.File
 import java.util.Date
 import java.util.Locale
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsSheet(
     currentClockStyle: ClockStyle,
@@ -70,7 +72,6 @@ fun SettingsSheet(
     showNewsFeed: Boolean = true,
     showTimeAway: Boolean = true,
     showWeatherBatteryGlance: Boolean = false,
-    enableDoubleTapToSleep: Boolean = false,
     sixAppsScale: Float = 0.9f,
     temperatureUnit: String = "F",
     currentGreeting: String,
@@ -83,7 +84,6 @@ fun SettingsSheet(
     onOpenWallpaperPicker: () -> Unit = {},
     onMonogramsToggled: (Boolean) -> Unit = {},
     onGestureHintsToggled: (Boolean) -> Unit = {},
-    onDoubleTapToSleepToggled: (Boolean) -> Unit = {},
     onSixAppsScaleChanged: (Float) -> Unit = {},
     onNewsFeedToggled: (Boolean) -> Unit = {},
     onTimeAwayToggled: (Boolean) -> Unit = {},
@@ -115,6 +115,12 @@ fun SettingsSheet(
     onOpenMinimalIconPackCreator: () -> Unit = {},
     hideEverythingOnHome: Boolean = false,
     onHideEverythingOnHomeToggled: (Boolean) -> Unit = {},
+    disableSixAppsView: Boolean = false,
+    onDisableSixAppsViewToggled: (Boolean) -> Unit = {},
+    homeCustomShortcut: String = "music",
+    installedApps: List<com.freelauncher.app.data.models.AppItem> = emptyList(),
+    iconPackManager: com.freelauncher.app.data.service.IconPackManager? = null,
+    onHomeCustomShortcutChanged: (String) -> Unit = {},
     onDismiss: () -> Unit,
 ) {
     val context = LocalContext.current
@@ -122,6 +128,7 @@ fun SettingsSheet(
     val lazyListState = rememberLazyListState()
     var showIconPackSheet by remember { mutableStateOf(false) }
     var showScribbleConfirmationDialog by remember { mutableStateOf(false) }
+    var showShortcutPicker by remember { mutableStateOf(false) }
     var selectedCategory by rememberSaveable { mutableStateOf("index") }
     var searchQuery by remember { mutableStateOf("") }
 
@@ -403,8 +410,6 @@ fun SettingsSheet(
                                                                     LauncherThemeMode.OLED_BLACK -> Color(0xFF000000)
                                                                     LauncherThemeMode.MATERIAL_YOU -> MaterialTheme.colorScheme.primary
                                                                     LauncherThemeMode.CHARCOAL -> Color(0xFF1E1E24)
-                                                                    LauncherThemeMode.PAPER_WARM -> Color(0xFFF7F4EC)
-                                                                    LauncherThemeMode.MINIMAL_LIGHT -> Color(0xFFFFFFFF)
                                                                 }
                                                             )
                                                             .border(
@@ -733,6 +738,45 @@ fun SettingsSheet(
                                             }
                                         )
                                     }
+
+                                    // Custom Home Shortcut Button
+                                    val customShortcutApp = remember(homeCustomShortcut, installedApps) {
+                                        if (homeCustomShortcut != "music" && homeCustomShortcut != "search") {
+                                            installedApps.find { it.packageName == homeCustomShortcut || it.id == homeCustomShortcut }
+                                        } else null
+                                    }
+
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clickable {
+                                                LauncherHaptics.playClick(context)
+                                                showShortcutPicker = true
+                                            }
+                                            .padding(16.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text("Custom Home Shortcut", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Medium))
+                                            Text(
+                                                text = when (homeCustomShortcut) {
+                                                    "music" -> "Music (Default) • Opens floating player"
+                                                    "search" -> "Search Lens • Opens universal search"
+                                                    else -> customShortcutApp?.label ?: homeCustomShortcut
+                                                },
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.secondary
+                                            )
+                                        }
+
+                                        Icon(
+                                            imageVector = Icons.Outlined.ChevronRight,
+                                            contentDescription = "Change Home Shortcut",
+                                            tint = MaterialTheme.colorScheme.secondary,
+                                            modifier = Modifier.size(22.dp)
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -807,48 +851,6 @@ fun SettingsSheet(
                             MetroSectionHeader(title = "SYSTEM & SCREEN GESTURES")
                             MaterialYouCard {
                                 Column {
-                                    // Double-Tap to Sleep
-                                    Row(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .clickable {
-                                                LauncherHaptics.playClick(context)
-                                                onDoubleTapToSleepToggled(!enableDoubleTapToSleep)
-                                            }
-                                            .padding(16.dp),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Column(modifier = Modifier.weight(1f)) {
-                                            Text("Double-Tap to Sleep", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Medium))
-                                            Text("Double-tap empty space on home screen to turn off / lock display", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.secondary)
-                                        }
-                                        Switch(
-                                            checked = enableDoubleTapToSleep,
-                                            onCheckedChange = {
-                                                LauncherHaptics.playClick(context)
-                                                onDoubleTapToSleepToggled(it)
-                                            }
-                                        )
-                                    }
-
-                                    if (enableDoubleTapToSleep) {
-                                        HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.15f), modifier = Modifier.padding(horizontal = 16.dp))
-                                        Column(
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .padding(horizontal = 16.dp, vertical = 10.dp)
-                                        ) {
-                                            Text(
-                                                text = "GPay / Banking Note: If Google Pay or banking apps show an accessibility security alert, you can temporarily turn off Double-Tap to Sleep here.",
-                                                style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp, lineHeight = 16.sp),
-                                                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.9f)
-                                            )
-                                        }
-                                    }
-
-                                    HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.15f), modifier = Modifier.padding(horizontal = 16.dp))
-
                                     // Swipe Down for Search
                                     Row(
                                         modifier = Modifier
@@ -1154,7 +1156,17 @@ fun SettingsSheet(
                                     Text(
                                         text = "NOMA Launcher",
                                         style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
-                                        color = MaterialTheme.colorScheme.onSurface
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                        modifier = Modifier.combinedClickable(
+                                            onClick = {},
+                                            onLongClick = {
+                                                LauncherHaptics.playClick(context)
+                                                val newStatus = !disableSixAppsView
+                                                onDisableSixAppsViewToggled(newStatus)
+                                                val msg = if (newStatus) "Quick Access (6 Apps) Disabled • Direct Home <-> App Drawer" else "Quick Access (6 Apps) Enabled"
+                                                android.widget.Toast.makeText(context, msg, android.widget.Toast.LENGTH_SHORT).show()
+                                            }
+                                        )
                                     )
                                     Text(
                                         text = "Version ${BuildConfig.VERSION_NAME} • Minimalist, focused, intelligent",
@@ -1344,6 +1356,161 @@ fun SettingsSheet(
                         showScribbleConfirmationDialog = false
                     }
                 ) {
+                    Text("Cancel")
+                }
+            },
+            shape = RoundedCornerShape(20.dp),
+            containerColor = MaterialTheme.colorScheme.surface,
+            tonalElevation = 6.dp
+        )
+    }
+
+    if (showShortcutPicker) {
+        AlertDialog(
+            onDismissRequest = { showShortcutPicker = false },
+            title = {
+                Text(
+                    text = "Choose Home Shortcut",
+                    style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold)
+                )
+            },
+            text = {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 400.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(
+                        text = "SYSTEM SHORTCUTS",
+                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, letterSpacing = 1.5.sp),
+                        color = MaterialTheme.colorScheme.primary
+                    )
+
+                    // Music
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .clickable {
+                                LauncherHaptics.playClick(context)
+                                onHomeCustomShortcutChanged("music")
+                                showShortcutPicker = false
+                            }
+                            .padding(horizontal = 12.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(36.dp)
+                                .clip(CircleShape)
+                                .background(MaterialTheme.colorScheme.primaryContainer),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Outlined.MusicNote,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Music (Default)", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold))
+                            Text("Opens floating Minimalist Music Player", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.secondary)
+                        }
+                        if (homeCustomShortcut == "music") {
+                            Icon(Icons.Default.Check, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
+                        }
+                    }
+
+                    // Search
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .clickable {
+                                LauncherHaptics.playClick(context)
+                                onHomeCustomShortcutChanged("search")
+                                showShortcutPicker = false
+                            }
+                            .padding(horizontal = 12.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(36.dp)
+                                .clip(CircleShape)
+                                .background(MaterialTheme.colorScheme.surfaceVariant),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Search,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Search", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold))
+                            Text("Opens universal search interface", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.secondary)
+                        }
+                        if (homeCustomShortcut == "search") {
+                            Icon(Icons.Default.Check, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
+                        }
+                    }
+
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.15f), modifier = Modifier.padding(vertical = 4.dp))
+
+                    Text(
+                        text = "INSTALLED APPLICATIONS",
+                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, letterSpacing = 1.5.sp),
+                        color = MaterialTheme.colorScheme.primary
+                    )
+
+                    LazyColumn(
+                        modifier = Modifier.fillMaxWidth().weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        val appsList = installedApps.sortedBy { it.label.lowercase(Locale.ROOT) }
+                        items(appsList, key = { it.packageName }) { app ->
+                            val isSelected = homeCustomShortcut == app.packageName || homeCustomShortcut == app.id
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .clickable {
+                                        LauncherHaptics.playClick(context)
+                                        onHomeCustomShortcutChanged(app.packageName)
+                                        showShortcutPicker = false
+                                    }
+                                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                com.freelauncher.app.ui.components.AppIcon(
+                                    app = app,
+                                    mode = com.freelauncher.app.data.models.IconDisplayMode.ORIGINAL,
+                                    iconPackManager = iconPackManager,
+                                    size = 32.dp
+                                )
+                                Text(
+                                    text = app.label,
+                                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal),
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                if (isSelected) {
+                                    Icon(Icons.Default.Check, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showShortcutPicker = false }) {
                     Text("Cancel")
                 }
             },

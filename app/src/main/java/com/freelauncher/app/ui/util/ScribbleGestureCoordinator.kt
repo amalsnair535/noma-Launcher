@@ -11,7 +11,8 @@ data class ScribblePoint(
 )
 
 data class ScribbleStroke(
-    val points: List<ScribblePoint>
+    val points: List<ScribblePoint>,
+    val id: String = java.util.UUID.randomUUID().toString()
 )
 
 enum class GesturalAction {

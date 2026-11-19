@@ -8,23 +8,19 @@ import android.net.Uri
 import android.os.Build
 import android.provider.AlarmClock
 import android.provider.Settings
+import androidx.core.net.toUri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.freelauncher.app.data.db.*
-import com.freelauncher.app.data.models.AppCategory
-import com.freelauncher.app.data.models.AppCategoryInfo
-import com.freelauncher.app.data.models.AppItem
+import com.freelauncher.app.data.models.*
 import com.freelauncher.app.data.repository.LauncherRepository
-import com.freelauncher.app.data.service.DigitalWellbeingService
-import com.freelauncher.app.data.service.FocusDayUsageData
+import com.freelauncher.app.data.service.*
 import com.freelauncher.app.ui.components.ClockStyle
-import com.freelauncher.app.ui.components.TimeCardVerticalAlign
 import com.freelauncher.app.ui.components.TimeCardHorizontalAlign
+import com.freelauncher.app.ui.components.TimeCardVerticalAlign
 import com.freelauncher.app.ui.theme.LauncherFont
 import com.freelauncher.app.ui.theme.LauncherThemeMode
 import com.freelauncher.app.ui.theme.LauncherWallpaper
-import com.google.firebase.crashlytics.FirebaseCrashlytics
-import androidx.core.net.toUri
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
@@ -51,9 +47,9 @@ data class LauncherUiState(
     val timeCardOffsetX: Float = 0f,
     val timeCardOffsetY: Float = 0f,
     val timeCardScale: Float = 1.0f,
-    val fontFamily: LauncherFont = LauncherFont.MINIMAL_SANS,
+    val fontFamily: LauncherFont = LauncherFont.MONOSPACE,
     val themeMode: LauncherThemeMode = LauncherThemeMode.OLED_BLACK,
-    val wallpaperId: String = "cyber_noir",
+    val wallpaperId: String = "paper_craft_sunset",
     val customWallpaperUri: String? = null,
     val wallpaperDim: Float = 0.25f,
     val showMonograms: Boolean = false,
@@ -73,7 +69,7 @@ data class LauncherUiState(
     val isFocusTimerRunning: Boolean = false,
     val hasUsagePermission: Boolean = false,
     val weeklyFocusHistory: List<FocusDayUsageData> = emptyList(),
-    val timeAwayStats: com.freelauncher.app.data.service.TimeAwayStats? = null,
+    val timeAwayStats: TimeAwayStats? = null,
     val searchQuery: String = "",
     val selectedAppForPinning: AppItem? = null,
     val showMultiPinDialog: Boolean = false,
@@ -104,7 +100,6 @@ data class LauncherUiState(
     val showBackupSheet: Boolean = false,
     val showWeatherBatteryGlance: Boolean = false,
     val temperatureUnit: String = "F",
-    val enableDoubleTapToSleep: Boolean = false,
     val enableSwipeDownSearch: Boolean = false,
     val enableScribbleSearch: Boolean = false,
     val enableMindfulPause: Boolean = false,
@@ -114,17 +109,20 @@ data class LauncherUiState(
     val isBatteryCharging: Boolean = false,
     val weatherText: String? = null,
     val enableLandscapeMode: Boolean = false,
-    val iconDisplayMode: com.freelauncher.app.data.models.IconDisplayMode = com.freelauncher.app.data.models.IconDisplayMode.TEXT_ONLY,
+    val iconDisplayMode: IconDisplayMode = IconDisplayMode.TEXT_ONLY,
     val selectedIconPackPackage: String = "",
-    val minimalIconPackConfig: com.freelauncher.app.data.models.MinimalIconPackConfig = com.freelauncher.app.data.models.MinimalIconPackConfig(),
-    val installedIconPacks: List<com.freelauncher.app.data.service.IconPackInfo> = emptyList(),
+    val minimalIconPackConfig: MinimalIconPackConfig = MinimalIconPackConfig(),
+    val installedIconPacks: List<IconPackInfo> = emptyList(),
     val showMinimalIconPackCreator: Boolean = false,
-    val showAccessibilityDisclosureDialog: Boolean = false,
-    val appDrawerStyle: com.freelauncher.app.data.models.AppDrawerStyle = com.freelauncher.app.data.models.AppDrawerStyle.NEO_MINIMAL,
-    val sixAppsAlignment: com.freelauncher.app.data.models.SixAppsAlignment = com.freelauncher.app.data.models.SixAppsAlignment.LEFT,
-    val allAppsAlignment: com.freelauncher.app.data.models.AllAppsAlignment = com.freelauncher.app.data.models.AllAppsAlignment.CENTER,
+    val appDrawerStyle: AppDrawerStyle = AppDrawerStyle.NEO_MINIMAL,
+    val sixAppsAlignment: SixAppsAlignment = SixAppsAlignment.LEFT,
+    val allAppsAlignment: AllAppsAlignment = AllAppsAlignment.LEFT,
     val hideEverythingOnHome: Boolean = false,
     val isScribbleSearchMode: Boolean = false,
+    val disableSixAppsView: Boolean = false,
+    val homeCustomShortcut: String = "music",
+    val showMusicPlayerOverlay: Boolean = false,
+    val mediaPlaybackInfo: MediaPlaybackInfo = MediaPlaybackInfo()
 )
 
 class LauncherViewModel(application: Application) : AndroidViewModel(application) {
@@ -134,20 +132,34 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     private val _uiState = MutableStateFlow(LauncherUiState())
     val uiState: StateFlow<LauncherUiState> = _uiState.asStateFlow()
 
+    private val _scribbleSearchState = MutableStateFlow(com.freelauncher.app.ui.util.ScribbleSearchState())
+    val scribbleSearchState: StateFlow<com.freelauncher.app.ui.util.ScribbleSearchState> = _scribbleSearchState.asStateFlow()
+    private var scribbleRecognitionJob: kotlinx.coroutines.Job? = null
+
     private val _currentTime = MutableStateFlow(Date())
     val currentTime: StateFlow<Date> = _currentTime.asStateFlow()
 
-    private val weatherService = com.freelauncher.app.data.service.WeatherService(application)
-    val iconPackManager = com.freelauncher.app.data.service.IconPackManager(application)
+    private val weatherService = WeatherService(application)
+    val iconPackManager = IconPackManager(application)
+    val mediaSessionManager = NomaMediaSessionManager(application)
 
     init {
         startTimeTicker()
+        observeMediaSession()
         loadSettings()
         observeDatabase()
         refreshApps()
         syncFeeds()
         refreshDigitalWellbeingStats()
         startBatteryAndWeatherMonitoring()
+    }
+
+    private fun observeMediaSession() {
+        viewModelScope.launch {
+            mediaSessionManager.playbackInfo.collect { info ->
+                _uiState.update { it.copy(mediaPlaybackInfo = info) }
+            }
+        }
     }
 
     private fun startTimeTicker() {
@@ -168,9 +180,10 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
                 val offsetX = settingsMap["time_card_offset_x"]?.toFloatOrNull() ?: 0f
                 val offsetY = settingsMap["time_card_offset_y"]?.toFloatOrNull() ?: 0f
                 val cardScale = settingsMap["time_card_scale"]?.toFloatOrNull() ?: 1.0f
-                val fontId = settingsMap["font_family"] ?: "minimal_sans"
+                val fontId = settingsMap["font_family"] ?: "monospace"
                 val themeId = settingsMap["theme_style"] ?: "oled_black"
-                val wallpaperId = settingsMap["wallpaper_id"] ?: "cyber_noir"
+                val rawWallpaperId = settingsMap["wallpaper_id"]
+                val wallpaperId = if (rawWallpaperId == null || rawWallpaperId == "cyber_noir") "paper_craft_sunset" else rawWallpaperId
                 val customWallpaperUri = settingsMap["custom_wallpaper_uri"]?.takeIf { it.isNotBlank() }
                 val wallpaperDim = settingsMap["wallpaper_dim"]?.toFloatOrNull() ?: 0.25f
                 val showMonograms = settingsMap["show_monograms"] == "true"
@@ -182,7 +195,6 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
                 val onboardingCompleted = settingsMap["onboarding_completed"] == "true"
                 val showWeatherGlance = settingsMap["show_weather_battery_glance"] == "true"
                 val tempUnit = settingsMap["temperature_unit"] ?: "F"
-                val doubleTapToSleep = settingsMap["enable_double_tap_to_sleep"] == "true"
                 val enableSwipeDownSearch = settingsMap["enable_swipe_down_search"] == "true"
                 val enableScribbleSearch = settingsMap["enable_scribble_search"] == "true"
                 val enableMindfulPause = settingsMap["enable_mindful_pause"] == "true"
@@ -200,6 +212,9 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
                 val allAppsAlignment = repository.getAllAppsAlignment()
                 val hideEverythingOnHome = repository.getHideEverythingOnHome()
 
+                val disableSixAppsView = repository.getDisableSixAppsView() || (settingsMap["disable_six_apps_view"] == "true")
+                val homeCustomShortcut = repository.getHomeCustomShortcut()
+
                 _uiState.update { state ->
                     state.copy(
                         clockStyle = ClockStyle.entries.find { it.id == clockStyleId } ?: ClockStyle.LARGE_DIGITAL,
@@ -208,7 +223,7 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
                         timeCardOffsetX = offsetX,
                         timeCardOffsetY = offsetY,
                         timeCardScale = cardScale.coerceIn(0.5f, 2.0f),
-                        fontFamily = LauncherFont.entries.find { it.id == fontId } ?: LauncherFont.MINIMAL_SANS,
+                        fontFamily = LauncherFont.entries.find { it.id == fontId } ?: LauncherFont.MONOSPACE,
                         themeMode = LauncherThemeMode.entries.find { it.id == themeId } ?: LauncherThemeMode.OLED_BLACK,
                         wallpaperId = wallpaperId,
                         customWallpaperUri = customWallpaperUri,
@@ -224,7 +239,6 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
                         showOnboardingGuide = !onboardingCompleted,
                         showWeatherBatteryGlance = showWeatherGlance,
                         temperatureUnit = tempUnit,
-                        enableDoubleTapToSleep = doubleTapToSleep,
                         enableSwipeDownSearch = enableSwipeDownSearch,
                         enableScribbleSearch = enableScribbleSearch,
                         enableMindfulPause = enableMindfulPause,
@@ -237,7 +251,9 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
                         appDrawerStyle = appDrawerStyle,
                         sixAppsAlignment = sixAppsAlignment,
                         allAppsAlignment = allAppsAlignment,
+                        disableSixAppsView = disableSixAppsView,
                         hideEverythingOnHome = hideEverythingOnHome,
+                        homeCustomShortcut = homeCustomShortcut,
                     )
                 }
             }
@@ -249,6 +265,32 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         viewModelScope.launch {
             repository.updateSetting("enable_landscape_mode", enabled.toString())
         }
+    }
+
+    fun setHomeCustomShortcut(shortcut: String) {
+        _uiState.update { it.copy(homeCustomShortcut = shortcut) }
+        viewModelScope.launch {
+            repository.saveHomeCustomShortcut(shortcut)
+        }
+    }
+
+    fun setShowMusicPlayerOverlay(show: Boolean) {
+        if (show) {
+            mediaSessionManager.updateMediaSession()
+        }
+        _uiState.update { it.copy(showMusicPlayerOverlay = show) }
+    }
+
+    fun toggleMediaPlayPause() {
+        mediaSessionManager.togglePlayPause()
+    }
+
+    fun skipMediaNext() {
+        mediaSessionManager.skipToNext()
+    }
+
+    fun skipMediaPrevious() {
+        mediaSessionManager.skipToPrevious()
     }
 
     private fun observeDatabase() {
@@ -306,8 +348,8 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     private data class ProcessedAppsData(
         val updatedApps: List<AppItem>,
         val pinnedList: List<AppItem>,
-        val userCategories: List<com.freelauncher.app.data.models.AppCategoryInfo>,
-        val categorizedApps: Map<com.freelauncher.app.data.models.AppCategory, List<AppItem>>
+        val userCategories: List<AppCategoryInfo>,
+        val categorizedApps: Map<AppCategory, List<AppItem>>
     )
 
     fun refreshApps(forceRefresh: Boolean = false) {
@@ -441,14 +483,27 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
+    fun setDisableSixAppsView(disabled: Boolean) {
+        _uiState.update { it.copy(disableSixAppsView = disabled) }
+        viewModelScope.launch {
+            repository.saveDisableSixAppsView(disabled)
+        }
+    }
+
     fun navigateTo(screen: LauncherScreen) {
-        if (_uiState.value.isPinnedOnlyLocked && (screen != LauncherScreen.SIX_APPS)) {
+        val targetScreen = if (_uiState.value.disableSixAppsView && screen == LauncherScreen.SIX_APPS) {
+            LauncherScreen.ALL_APPS
+        } else {
+            screen
+        }
+
+        if (_uiState.value.isPinnedOnlyLocked && (targetScreen != LauncherScreen.SIX_APPS)) {
             _uiState.update { it.copy(pinnedLockFeedbackMessage = "UltraFocus Mode Locked • Triple-tap to exit") }
             return
         }
-        val leavingAllApps = _uiState.value.currentScreen == LauncherScreen.ALL_APPS && screen != LauncherScreen.ALL_APPS
+        val leavingAllApps = _uiState.value.currentScreen == LauncherScreen.ALL_APPS && targetScreen != LauncherScreen.ALL_APPS
         if (leavingAllApps) {
-            _uiState.update { it.copy(currentScreen = screen) }
+            _uiState.update { it.copy(currentScreen = targetScreen) }
             viewModelScope.launch {
                 delay(220.milliseconds)
                 if (_uiState.value.currentScreen != LauncherScreen.ALL_APPS) {
@@ -464,10 +519,10 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         } else {
             _uiState.update { 
                 it.copy(
-                    currentScreen = screen,
-                    isSearchOnlyMode = if (screen == LauncherScreen.ALL_APPS) it.isSearchOnlyMode else false,
-                    isScribbleSearchMode = if (screen == LauncherScreen.ALL_APPS) it.isScribbleSearchMode else false,
-                    searchQuery = if (screen == LauncherScreen.ALL_APPS) it.searchQuery else ""
+                    currentScreen = targetScreen,
+                    isSearchOnlyMode = if (targetScreen == LauncherScreen.ALL_APPS) it.isSearchOnlyMode else false,
+                    isScribbleSearchMode = if (targetScreen == LauncherScreen.ALL_APPS) it.isScribbleSearchMode else false,
+                    searchQuery = if (targetScreen == LauncherScreen.ALL_APPS) it.searchQuery else ""
                 ) 
             }
         }
@@ -678,7 +733,7 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
                 android.widget.Toast.makeText(context, "${app.label} is not installed", android.widget.Toast.LENGTH_SHORT).show()
             }
         } catch (e: Exception) {
-            FirebaseCrashlytics.getInstance().recordException(e)
+            com.freelauncher.app.ui.util.SafeCrashlytics.logException(e)
             android.widget.Toast.makeText(context, "Could not open ${app.label}", android.widget.Toast.LENGTH_SHORT).show()
         }
     }
@@ -742,7 +797,7 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
             android.widget.Toast.makeText(context, "No app available to handle link", android.widget.Toast.LENGTH_SHORT).show()
         } catch (e: Exception) {
             android.util.Log.e("LauncherVM", "Error opening web URL: %s", e)
-            FirebaseCrashlytics.getInstance().recordException(e)
+            com.freelauncher.app.ui.util.SafeCrashlytics.logException(e)
         }
     }
 
@@ -982,7 +1037,7 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
             viewModelScope.launch {
                 repository.deleteCustomWallpaper(longId)
                 if (_uiState.value.wallpaperId == id) {
-                    setWallpaper("cyber_noir")
+                    setWallpaper("paper_craft_sunset")
                 }
             }
         }
@@ -1013,7 +1068,7 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
                 repository.updateSetting("wallpaper_id", "custom_gallery")
                 repository.updateSetting("custom_wallpaper_uri", savedPath)
             } catch (e: Exception) {
-                FirebaseCrashlytics.getInstance().recordException(e)
+                com.freelauncher.app.ui.util.SafeCrashlytics.logException(e)
             }
         }
     }
@@ -1032,12 +1087,12 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
             withContext(Dispatchers.Main) {
                 _uiState.update {
                     it.copy(
-                        wallpaperId = "cyber_noir",
+                        wallpaperId = "paper_craft_sunset",
                         customWallpaperUri = null,
                     )
                 }
             }
-            repository.updateSetting("wallpaper_id", "cyber_noir")
+            repository.updateSetting("wallpaper_id", "paper_craft_sunset")
             repository.updateSetting("custom_wallpaper_uri", "")
         }
     }
@@ -1236,36 +1291,10 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
-    fun setDoubleTapToSleepEnabled(enabled: Boolean) {
-        _uiState.update { it.copy(enableDoubleTapToSleep = enabled) }
-        viewModelScope.launch {
-            repository.updateSetting("enable_double_tap_to_sleep", enabled.toString())
-        }
-        if (enabled && !com.freelauncher.app.data.service.NomaAccessibilityService.isEnabled()) {
-            _uiState.update { it.copy(showAccessibilityDisclosureDialog = true) }
-        }
-    }
-
     fun setHideEverythingOnHome(hide: Boolean) {
         _uiState.update { it.copy(hideEverythingOnHome = hide) }
         viewModelScope.launch {
             repository.saveHideEverythingOnHome(hide)
-        }
-    }
-
-    fun setAccessibilityDisclosureDialogVisible(visible: Boolean) {
-        _uiState.update { it.copy(showAccessibilityDisclosureDialog = visible) }
-    }
-
-    fun confirmAccessibilityDisclosure(context: Context) {
-        _uiState.update { it.copy(showAccessibilityDisclosureDialog = false) }
-        try {
-            val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).apply {
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            }
-            context.startActivity(intent)
-        } catch (e: Exception) {
-            FirebaseCrashlytics.getInstance().recordException(e)
         }
     }
 
@@ -1280,6 +1309,117 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         _uiState.update { it.copy(enableScribbleSearch = enabled) }
         viewModelScope.launch {
             repository.updateSetting("enable_scribble_search", enabled.toString())
+        }
+        if (!enabled) {
+            clearScribbleSearch()
+        }
+    }
+
+    fun onScribbleStrokeStarted(point: com.freelauncher.app.ui.util.ScribblePoint) {
+        _scribbleSearchState.update { state ->
+            state.copy(currentStroke = com.freelauncher.app.ui.util.ScribbleStroke(listOf(point)))
+        }
+    }
+
+    fun onScribbleStrokeUpdated(point: com.freelauncher.app.ui.util.ScribblePoint) {
+        _scribbleSearchState.update { state ->
+            val curr = state.currentStroke
+            if (curr != null) {
+                state.copy(currentStroke = com.freelauncher.app.ui.util.ScribbleStroke(curr.points + point))
+            } else {
+                state.copy(currentStroke = com.freelauncher.app.ui.util.ScribbleStroke(listOf(point)))
+            }
+        }
+    }
+
+    fun onScribbleStrokeCompleted(
+        points: List<com.freelauncher.app.ui.util.ScribblePoint>,
+        action: com.freelauncher.app.ui.util.GesturalAction,
+        recognizer: com.freelauncher.app.data.service.ScribbleRecognizer
+    ) {
+        _scribbleSearchState.update { it.copy(currentStroke = null) }
+
+        when (action) {
+            com.freelauncher.app.ui.util.GesturalAction.SWIPE_LEFT -> {
+                onBackspaceScribble()
+            }
+            com.freelauncher.app.ui.util.GesturalAction.HANDWRITING_STROKE -> {
+                val newStroke = com.freelauncher.app.ui.util.ScribbleStroke(points)
+                val updatedStrokes = listOf(newStroke)
+                val nextRequestId = _scribbleSearchState.value.requestId + 1
+                _scribbleSearchState.update {
+                    it.copy(
+                        strokes = updatedStrokes,
+                        requestId = nextRequestId,
+                        isRecognizing = true
+                    )
+                }
+
+                scribbleRecognitionJob?.cancel()
+                scribbleRecognitionJob = viewModelScope.launch {
+                    delay(120.milliseconds)
+                    val candidates = recognizer.recognizeStrokes(updatedStrokes)
+                    if (_scribbleSearchState.value.requestId == nextRequestId) {
+                        _scribbleSearchState.update { it.copy(isRecognizing = false) }
+                        if (candidates.isNotEmpty()) {
+                            val rawCandidate = candidates.first().trim()
+                            val resolvedCandidate = when {
+                                rawCandidate.equals("i", ignoreCase = true) || rawCandidate == "1" || rawCandidate == "|" -> {
+                                    if (candidates.any { c -> c.equals("l", ignoreCase = true) }) "L" else "I"
+                                }
+                                rawCandidate.equals("l", ignoreCase = true) -> "L"
+                                else -> rawCandidate
+                            }
+                            if (resolvedCandidate.isNotBlank()) {
+                                updateScribbleQuery(resolvedCandidate)
+                            } else {
+                                _scribbleSearchState.update { it.copy(strokes = emptyList(), currentStroke = null) }
+                            }
+                        } else {
+                            _scribbleSearchState.update { it.copy(strokes = emptyList(), currentStroke = null) }
+                        }
+                    }
+                }
+            }
+            else -> { /* Tap or linear navigation swipe */ }
+        }
+    }
+
+    fun onBackspaceScribble() {
+        val currQuery = _scribbleSearchState.value.recognizedQuery
+        if (currQuery.isNotEmpty()) {
+            val updatedQuery = currQuery.dropLast(1)
+            updateScribbleQuery(updatedQuery)
+        } else {
+            clearScribbleSearch()
+        }
+    }
+
+    fun updateScribbleQuery(query: String) {
+        val cleanQuery = query.trim()
+        if (cleanQuery.isBlank()) {
+            clearScribbleSearch()
+            return
+        }
+        val matchingApps = com.freelauncher.app.data.service.InstalledAppMatcher.matchAppsWithHighlight(
+            installedApps = _uiState.value.installedApps,
+            query = cleanQuery,
+            isScribbleSearch = true
+        )
+        _scribbleSearchState.update {
+            it.copy(
+                recognizedQuery = cleanQuery,
+                matchingApps = matchingApps,
+                strokes = emptyList(),
+                currentStroke = null
+            )
+        }
+    }
+
+    fun clearScribbleSearch() {
+        scribbleRecognitionJob?.cancel()
+        _scribbleSearchState.update {
+            com.freelauncher.app.ui.util.ScribbleSearchState()
         }
     }
 
@@ -1307,16 +1447,6 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
 
     fun setAboutSheetVisible(visible: Boolean) {
         _uiState.update { it.copy(showAboutSheet = visible) }
-    }
-
-    fun performDoubleTapToSleep(context: Context) {
-        if (com.freelauncher.app.data.service.NomaAccessibilityService.isEnabled() &&
-            com.freelauncher.app.data.service.NomaAccessibilityService.lockScreen(context)) {
-            return
-        }
-
-        // Service not yet connected -> Show in-app Prominent Disclosure dialog first
-        _uiState.update { it.copy(showAccessibilityDisclosureDialog = true) }
     }
 
     fun setIconDisplayMode(mode: com.freelauncher.app.data.models.IconDisplayMode) {
@@ -1368,16 +1498,21 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     private fun startBatteryAndWeatherMonitoring() {
         try {
             val filter = android.content.IntentFilter(Intent.ACTION_BATTERY_CHANGED)
-            val batteryStatus: Intent? = getApplication<Application>().registerReceiver(
-                object : android.content.BroadcastReceiver() {
-                    override fun onReceive(context: Context?, intent: Intent?) {
-                        intent?.let { updateBatteryState(it) }
-                    }
-                }, filter
+            val app = getApplication<Application>()
+            val receiver = object : android.content.BroadcastReceiver() {
+                override fun onReceive(context: Context?, intent: Intent?) {
+                    intent?.let { updateBatteryState(it) }
+                }
+            }
+            val batteryStatus: Intent? = androidx.core.content.ContextCompat.registerReceiver(
+                app,
+                receiver,
+                filter,
+                androidx.core.content.ContextCompat.RECEIVER_EXPORTED
             )
             batteryStatus?.let { updateBatteryState(it) }
         } catch (e: Exception) {
-            FirebaseCrashlytics.getInstance().recordException(e)
+            com.freelauncher.app.ui.util.SafeCrashlytics.logException(e)
         }
 
         viewModelScope.launch {

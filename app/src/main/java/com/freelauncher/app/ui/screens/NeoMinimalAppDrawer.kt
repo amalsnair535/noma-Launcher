@@ -268,7 +268,6 @@ fun NeoMinimalAppDrawer(
                                             delay(180.milliseconds)
                                             val candidates = scribbleRecognizer.recognizeStrokes(newStrokes)
                                             isRecognizing = false
-                                            scribbleStrokes = emptyList()
                                             if (candidates.isNotEmpty()) {
                                                 val rawCandidate = candidates.first().trim()
                                                 val resolvedCandidate = when {
@@ -424,7 +423,7 @@ fun NeoMinimalAppDrawer(
                                                 com.freelauncher.app.data.models.AllAppsAlignment.RIGHT -> Arrangement.End
                                             }
                                         ) {
-                                            if (state.iconDisplayMode != com.freelauncher.app.data.models.IconDisplayMode.TEXT_ONLY) {
+                                            if (state.iconDisplayMode != com.freelauncher.app.data.models.IconDisplayMode.TEXT_ONLY && state.allAppsAlignment == com.freelauncher.app.data.models.AllAppsAlignment.LEFT) {
                                                 com.freelauncher.app.ui.components.AppIcon(
                                                     app = app,
                                                     mode = state.iconDisplayMode,
@@ -572,7 +571,7 @@ fun NeoMinimalAppDrawer(
                                             com.freelauncher.app.data.models.AllAppsAlignment.RIGHT -> Arrangement.End
                                         }
                                     ) {
-                                        if (state.iconDisplayMode != com.freelauncher.app.data.models.IconDisplayMode.TEXT_ONLY) {
+                                        if (state.iconDisplayMode != com.freelauncher.app.data.models.IconDisplayMode.TEXT_ONLY && state.allAppsAlignment == com.freelauncher.app.data.models.AllAppsAlignment.LEFT) {
                                             com.freelauncher.app.ui.components.AppIcon(
                                                 app = app,
                                                 mode = state.iconDisplayMode,

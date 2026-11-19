@@ -135,8 +135,7 @@ class WeatherService(
                 e
             )
 
-            FirebaseCrashlytics.getInstance()
-                .recordException(e)
+            com.freelauncher.app.ui.util.SafeCrashlytics.logException(e)
 
             return@withContext null
         }
@@ -461,8 +460,7 @@ class WeatherService(
                 e
             )
 
-            FirebaseCrashlytics.getInstance()
-                .recordException(e)
+            com.freelauncher.app.ui.util.SafeCrashlytics.logException(e)
 
             null
         }

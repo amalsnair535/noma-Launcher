@@ -5,7 +5,6 @@ import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.dynamicDarkColorScheme
-import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.graphics.Color
@@ -14,9 +13,7 @@ import androidx.compose.ui.platform.LocalContext
 enum class LauncherThemeMode(val id: String, val displayName: String, val isDark: Boolean) {
     OLED_BLACK("oled_black", "OLED Pure Black", true),
     MATERIAL_YOU("material_you", "Material You (Dynamic Colors)", true),
-    CHARCOAL("charcoal", "Charcoal Dark", true),
-    PAPER_WARM("paper_warm", "Warm Paper (E-Ink)", false),
-    MINIMAL_LIGHT("minimal_light", "Minimal Light", false)
+    CHARCOAL("charcoal", "Charcoal Dark", true)
 }
 
 val OledColorScheme = darkColorScheme(
@@ -51,42 +48,10 @@ val CharcoalColorScheme = darkColorScheme(
     outline = CharcoalBorder
 )
 
-val PaperColorScheme = lightColorScheme(
-    primary = PaperOnBackground,
-    onPrimary = PaperBackground,
-    primaryContainer = PaperCard,
-    onPrimaryContainer = PaperOnBackground,
-    secondary = PaperOnMuted,
-    onSecondary = PaperBackground,
-    background = PaperBackground,
-    onBackground = PaperOnBackground,
-    surface = PaperSurface,
-    onSurface = PaperOnBackground,
-    surfaceVariant = PaperCard,
-    onSurfaceVariant = PaperOnMuted,
-    outline = PaperBorder
-)
-
-val LightColorScheme = lightColorScheme(
-    primary = LightOnBackground,
-    onPrimary = Color.White,
-    primaryContainer = LightCard,
-    onPrimaryContainer = LightOnBackground,
-    secondary = LightOnMuted,
-    onSecondary = Color.White,
-    background = LightBackground,
-    onBackground = LightOnBackground,
-    surface = LightSurface,
-    onSurface = LightOnBackground,
-    surfaceVariant = LightCard,
-    onSurfaceVariant = LightOnMuted,
-    outline = LightBorder
-)
-
 @Composable
 fun FreeLauncherTheme(
     themeMode: LauncherThemeMode = LauncherThemeMode.OLED_BLACK,
-    launcherFont: LauncherFont = LauncherFont.MINIMAL_SANS,
+    launcherFont: LauncherFont = LauncherFont.MONOSPACE,
     content: @Composable () -> Unit
 ) {
     val context = LocalContext.current
@@ -100,8 +65,6 @@ fun FreeLauncherTheme(
             }
         }
         LauncherThemeMode.CHARCOAL -> CharcoalColorScheme
-        LauncherThemeMode.PAPER_WARM -> PaperColorScheme
-        LauncherThemeMode.MINIMAL_LIGHT -> LightColorScheme
     }
     val typography = getTypographyForFont(launcherFont)
 

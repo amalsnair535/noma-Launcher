@@ -4,17 +4,16 @@ import android.text.Html
 import android.util.Xml
 import com.freelauncher.app.data.db.RssArticleEntity
 import com.freelauncher.app.data.db.RssFeedEntity
+import com.freelauncher.app.ui.util.SafeCrashlytics
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.xmlpull.v1.XmlPullParser
-import com.google.firebase.crashlytics.FirebaseCrashlytics
 import java.io.StringReader
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
-import java.util.concurrent.TimeUnit
 
 class RssParser(
     private val client: OkHttpClient = com.freelauncher.app.data.service.NetworkClientModule.sharedOkHttpClient
@@ -42,7 +41,7 @@ class RssParser(
 
             return@withContext parseXml(xmlContent, feed)
         } catch (e: Exception) {
-            FirebaseCrashlytics.getInstance().recordException(e)
+            SafeCrashlytics.logException(e)
             return@withContext emptyList()
         }
     }
@@ -117,7 +116,7 @@ class RssParser(
                 eventType = parser.next()
             }
         } catch (e: Exception) {
-            FirebaseCrashlytics.getInstance().recordException(e)
+            SafeCrashlytics.logException(e)
         }
 
         // Deduplicate within the same feed by normalized title and link

@@ -79,7 +79,7 @@ enum class AllAppsAlignment(val id: String, val displayName: String) {
     RIGHT("right", "Right");
 
     companion object {
-        fun fromName(name: String, default: AllAppsAlignment = CENTER): AllAppsAlignment {
+        fun fromName(name: String, default: AllAppsAlignment = LEFT): AllAppsAlignment {
             return entries.find { it.name.equals(name, ignoreCase = true) || it.id.equals(name, ignoreCase = true) } ?: default
         }
     }

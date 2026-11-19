@@ -8,7 +8,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -23,13 +22,13 @@ import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.OpenWith
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.outlined.Call
+import androidx.compose.material.icons.outlined.MusicNote
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalView
@@ -41,7 +40,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.freelauncher.app.data.models.AppItem
 import com.freelauncher.app.data.service.IconPackManager
-import com.freelauncher.app.data.service.InstalledAppMatcher
 import com.freelauncher.app.data.service.ScribbleRecognizer
 import com.freelauncher.app.ui.components.ClockStyle
 import com.freelauncher.app.ui.components.MinimalistClock
@@ -50,18 +48,14 @@ import com.freelauncher.app.ui.components.getContextualGreeting
 import com.freelauncher.app.ui.util.DateTimeUtils
 import com.freelauncher.app.ui.util.GesturalAction
 import com.freelauncher.app.ui.util.LauncherHaptics
-import com.freelauncher.app.ui.util.ScribbleGestureCoordinator
 import com.freelauncher.app.ui.util.ScribblePoint
-import com.freelauncher.app.ui.util.ScribbleStroke
+import com.freelauncher.app.ui.util.ScribbleSearchState
+import com.freelauncher.app.ui.util.scribbleInputHandler
 import com.freelauncher.app.ui.viewmodel.LauncherScreen
 import com.freelauncher.app.ui.viewmodel.LauncherUiState
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 import java.util.*
 import kotlin.math.abs
 import kotlin.math.roundToInt
-import kotlin.time.Duration.Companion.milliseconds
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -71,6 +65,12 @@ fun HomeScreen(
     onNavigate: (LauncherScreen) -> Unit,
     onOpenSettings: () -> Unit,
     modifier: Modifier = Modifier,
+    scribbleState: ScribbleSearchState = ScribbleSearchState(),
+    onScribbleStrokeStarted: (ScribblePoint) -> Unit = {},
+    onScribbleStrokeUpdated: (ScribblePoint) -> Unit = {},
+    onScribbleStrokeCompleted: (List<ScribblePoint>, GesturalAction, ScribbleRecognizer) -> Unit = { _, _, _ -> },
+    onClearScribble: () -> Unit = {},
+    onBackspaceScribble: () -> Unit = {},
     onLaunchApp: (AppItem) -> Unit = {},
     onLongPressApp: (AppItem) -> Unit = {},
     onOpenSearch: () -> Unit = {},
@@ -78,24 +78,28 @@ fun HomeScreen(
     onOpenDialer: () -> Unit = {},
     onOpenClock: () -> Unit = {},
     onOpenCalendar: () -> Unit = {},
-    onDoubleTapToSleep: () -> Unit = {},
     onClockStyleChanged: (ClockStyle) -> Unit = {},
     onTimeCardOffsetChanged: (Float, Float) -> Unit = { _, _ -> },
     onResetTimeCardOffset: () -> Unit = {},
     onTimeCardScaleChanged: (Float) -> Unit = {},
     onClockEditModeToggled: (Boolean) -> Unit = {},
     onToggleUltraFocus: () -> Unit = {},
+    onOpenMusicPlayer: () -> Unit = {},
+    onTogglePlayPause: () -> Unit = {},
+    onSkipNext: () -> Unit = {},
+    onSkipPrevious: () -> Unit = {},
+    onDismissMusicPlayer: () -> Unit = {},
     iconPackManager: IconPackManager? = null
 ) {
     BackHandler(enabled = true) {
         if (state.isClockEditMode) {
             onClockEditModeToggled(false)
+        } else if (scribbleState.isActive) {
+            onClearScribble()
         }
-        // Intercept back gesture / press on Home Screen: no navigation, no animation, no reload
     }
 
     val context = androidx.compose.ui.platform.LocalContext.current
-    val scope = rememberCoroutineScope()
 
     // On-Device ML Kit Scribble Recognizer Setup
     val scribbleRecognizer = remember(context) { ScribbleRecognizer(context) }
@@ -103,16 +107,7 @@ fun HomeScreen(
         onDispose { scribbleRecognizer.close() }
     }
 
-    // Live Scribble Search State
-    var strokes by remember { mutableStateOf<List<ScribbleStroke>>(emptyList()) }
-    var currentStrokePoints by remember { mutableStateOf<List<ScribblePoint>>(emptyList()) }
-    var recognizedText by remember { mutableStateOf("") }
-    var matchingScribbleApps by remember { mutableStateOf<List<AppItem>>(emptyList()) }
-    var isRecognizing by remember { mutableStateOf(false) }
-    var recognitionJob by remember { mutableStateOf<Job?>(null) }
     var lastScribbleTime by remember { mutableLongStateOf(0L) }
-
-    val currentStroke = if (currentStrokePoints.isNotEmpty()) ScribbleStroke(currentStrokePoints) else null
 
     val dateText by produceState(
         initialValue = DateTimeUtils.format(Calendar.getInstance().time, DateTimeUtils.Patterns.DATE_EEEE_MMMM_D),
@@ -188,6 +183,8 @@ fun HomeScreen(
                 onClick = {
                     if (isEditMode) {
                         onClockEditModeToggled(false)
+                    } else if (scribbleState.isActive) {
+                        onClearScribble()
                     } else {
                         val now = System.currentTimeMillis()
                         val isDrawingActive = (now - lastScribbleTime) < 700L
@@ -199,12 +196,7 @@ fun HomeScreen(
                             }
                             lastRootTapTime = now
 
-                            if (rootTapCount == 2) {
-                                if (state.enableDoubleTapToSleep) {
-                                    LauncherHaptics.playClick(context)
-                                    onDoubleTapToSleep()
-                                }
-                            } else if (rootTapCount >= 3) {
+                            if (rootTapCount >= 2) {
                                 rootTapCount = 0
                                 LauncherHaptics.playClick(context)
                                 onToggleUltraFocus()
@@ -214,101 +206,75 @@ fun HomeScreen(
                 },
                 onLongClick = {
                     val now = System.currentTimeMillis()
-                    val isDrawingOrRecent = currentStrokePoints.isNotEmpty() || strokes.isNotEmpty() || (now - lastScribbleTime < 800L)
+                    val isDrawingOrRecent = scribbleState.isDrawing || scribbleState.isActive || (now - lastScribbleTime < 800L)
                     if (!isEditMode && !isDrawingOrRecent) {
                         onOpenSettings()
                     }
                 }
             )
-            .pointerInput(isEditMode, screenWidthPx, state.installedApps, state.enableScribbleSearch) {
-                if (!isEditMode) {
-                    awaitPointerEventScope {
-                        while (true) {
-                            val down = awaitFirstDown(requireUnconsumed = false)
-                            val strokePoints = mutableListOf<ScribblePoint>()
-                            strokePoints.add(ScribblePoint(down.position.x, down.position.y))
-                            if (state.enableScribbleSearch) {
-                                currentStrokePoints = strokePoints.toList()
+            .scribbleInputHandler(
+                enabled = !isEditMode && state.enableScribbleSearch,
+                screenWidthPx = screenWidthPx,
+                isResultViewActive = scribbleState.isActive,
+                onStrokeStarted = { pt ->
+                    if (!scribbleState.isActive) {
+                        lastScribbleTime = System.currentTimeMillis()
+                        onScribbleStrokeStarted(pt)
+                    }
+                },
+                onStrokeUpdated = { pt ->
+                    if (!scribbleState.isActive) {
+                        lastScribbleTime = System.currentTimeMillis()
+                        onScribbleStrokeUpdated(pt)
+                    }
+                },
+                onStrokeCompleted = { completedPoints, action ->
+                    lastScribbleTime = System.currentTimeMillis()
+                    if (scribbleState.isActive) {
+                        when (action) {
+                            GesturalAction.SWIPE_UP,
+                            GesturalAction.SWIPE_DOWN,
+                            GesturalAction.SWIPE_LEFT,
+                            GesturalAction.SWIPE_RIGHT -> {
+                                LauncherHaptics.playClick(context)
+                                onClearScribble()
                             }
-
-                            val pointerId = down.id
-
-                            while (true) {
-                                val event = awaitPointerEvent()
-                                val dragChange = event.changes.find { it.id == pointerId } ?: break
-
-                                if (dragChange.pressed) {
-                                    val dx = dragChange.position.x - down.position.x
-                                    val dy = dragChange.position.y - down.position.y
-                                    if (kotlin.math.hypot(dx, dy) > 12f) {
-                                        lastScribbleTime = System.currentTimeMillis()
-                                        strokePoints.add(ScribblePoint(dragChange.position.x, dragChange.position.y))
-                                        if (state.enableScribbleSearch) {
-                                            currentStrokePoints = strokePoints.toList()
-                                        }
-                                    }
-                                } else {
-                                    break
-                                }
+                            else -> { /* List scroll or tap inside results */ }
+                        }
+                    } else if (completedPoints.isNotEmpty()) {
+                        when (action) {
+                            GesturalAction.SWIPE_UP -> {
+                                onClearScribble()
+                                onNavigate(LauncherScreen.SIX_APPS)
                             }
-
-                            val completedStrokePoints = strokePoints.toList()
-                            currentStrokePoints = emptyList()
-
-                            if (completedStrokePoints.size > 1) {
-                                val gesturalAction = ScribbleGestureCoordinator.analyzeStroke(
-                                    points = completedStrokePoints,
-                                    screenWidthPx = screenWidthPx
-                                )
-
-                                when (gesturalAction) {
-                                    GesturalAction.SWIPE_UP -> onNavigate(LauncherScreen.SIX_APPS)
-                                    GesturalAction.SWIPE_DOWN -> if (state.enableSwipeDownSearch) onOpenSearch()
-                                    GesturalAction.SWIPE_LEFT -> if (state.showNewsFeed) onNavigate(LauncherScreen.RSS_FEED)
-                                    GesturalAction.SWIPE_RIGHT -> if (state.showTimeAway) onNavigate(LauncherScreen.TIME_AWAY)
-                                    GesturalAction.HANDWRITING_STROKE -> {
-                                        if (state.enableScribbleSearch) {
-                                            lastScribbleTime = System.currentTimeMillis()
-                                            val newStrokes = strokes + ScribbleStroke(completedStrokePoints)
-                                            strokes = newStrokes
-
-                                            recognitionJob?.cancel()
-                                            recognitionJob = scope.launch {
-                                                isRecognizing = true
-                                                delay(180.milliseconds)
-                                                val candidates = scribbleRecognizer.recognizeStrokes(newStrokes)
-                                                isRecognizing = false
-                                                if (candidates.isNotEmpty()) {
-                                                    val rawCandidate = candidates.first().trim()
-                                                    val resolvedCandidate = when {
-                                                        rawCandidate.equals("i", ignoreCase = true) || rawCandidate == "1" || rawCandidate == "|" -> {
-                                                            if (candidates.any { it.equals("l", ignoreCase = true) } && !candidates.any { it.equals("i", ignoreCase = true) }) "L" else "I"
-                                                        }
-                                                        rawCandidate.equals("l", ignoreCase = true) -> "L"
-                                                        else -> rawCandidate
-                                                    }
-                                                    if (resolvedCandidate.isNotBlank()) {
-                                                        strokes = emptyList()
-                                                        currentStrokePoints = emptyList()
-                                                        recognizedText = ""
-                                                        matchingScribbleApps = emptyList()
-                                                        onOpenSearchWithQuery(resolvedCandidate)
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-                                    GesturalAction.NONE -> { /* Quick touch or tap */ }
-                                }
+                            GesturalAction.SWIPE_DOWN -> {
+                                onClearScribble()
+                                if (state.enableSwipeDownSearch) onOpenSearch()
+                            }
+                            GesturalAction.SWIPE_LEFT -> {
+                                onClearScribble()
+                                if (state.showNewsFeed) onNavigate(LauncherScreen.RSS_FEED)
+                            }
+                            GesturalAction.SWIPE_RIGHT -> {
+                                onClearScribble()
+                                if (state.showTimeAway) onNavigate(LauncherScreen.TIME_AWAY)
+                            }
+                            GesturalAction.HANDWRITING_STROKE -> {
+                                onScribbleStrokeCompleted(completedPoints, action, scribbleRecognizer)
+                            }
+                            GesturalAction.NONE -> {
+                                onClearScribble()
                             }
                         }
+                    } else {
+                        onClearScribble()
                     }
                 }
-            }
+            )
             .testTag("home_screen_root")
     ) {
-        // Edge gesture hints when not editing (Only shown if gesture hints setting is enabled)
-        if (!isEditMode && state.showGestureHints) {
+        // Edge gesture hints when not editing or searching (Only shown if gesture hints setting is enabled)
+        if (!isEditMode && !scribbleState.isActive && state.showGestureHints) {
             // Left hint: Time Away Screen
             if (state.showTimeAway) {
                 Box(
@@ -373,7 +339,7 @@ fun HomeScreen(
         }
 
         // Main Time Card Container with Free Movement / Drag Offset & Scaling
-        if (!state.hideEverythingOnHome || isEditMode) {
+        if ((!state.hideEverythingOnHome && !scribbleState.isActive) || isEditMode) {
             Box(
                 modifier = Modifier
                     .align(Alignment.Center)
@@ -533,8 +499,14 @@ fun HomeScreen(
 
                     Spacer(modifier = Modifier.height(10.dp))
 
-                    // Quick Action Icons Row: Search Lens & Dialer Icon
+                    // Quick Action Icons Row: Configurable Shortcut & Dialer Icon
                     if (!isEditMode) {
+                        val customShortcutApp = remember(state.homeCustomShortcut, state.installedApps) {
+                            if (state.homeCustomShortcut != "music" && state.homeCustomShortcut != "search") {
+                                state.installedApps.find { it.packageName == state.homeCustomShortcut || it.id == state.homeCustomShortcut }
+                            } else null
+                        }
+
                         Row(
                             horizontalArrangement = Arrangement.spacedBy(14.dp),
                             verticalAlignment = Alignment.CenterVertically,
@@ -542,24 +514,61 @@ fun HomeScreen(
                                 .scale(clockAnimScale.coerceAtMost(1.1f))
                                 .padding(vertical = 4.dp)
                         ) {
-                            // Search Lens Icon Button
+                            // Configurable Shortcut Icon Button
                             Surface(
-                                onClick = onOpenSearch,
+                                onClick = {
+                                    when (state.homeCustomShortcut) {
+                                        "music" -> onOpenMusicPlayer()
+                                        "search" -> onOpenSearch()
+                                        else -> {
+                                            if (customShortcutApp != null) {
+                                                onLaunchApp(customShortcutApp)
+                                            } else {
+                                                onOpenSearch()
+                                            }
+                                        }
+                                    }
+                                },
                                 shape = CircleShape,
                                 color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
                                 border = androidx.compose.foundation.BorderStroke(
                                     0.8.dp,
                                     MaterialTheme.colorScheme.outline.copy(alpha = 0.25f)
                                 ),
-                                modifier = Modifier.size(38.dp).testTag("home_search_lens_button")
+                                modifier = Modifier.size(38.dp).testTag("home_custom_shortcut_button")
                             ) {
                                 Box(contentAlignment = Alignment.Center) {
-                                    Icon(
-                                        imageVector = Icons.Default.Search,
-                                        contentDescription = "Search Lens",
-                                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.85f),
-                                        modifier = Modifier.size(17.dp)
-                                    )
+                                    when (state.homeCustomShortcut) {
+                                        "music" -> Icon(
+                                            imageVector = Icons.Outlined.MusicNote,
+                                            contentDescription = "Music Shortcut",
+                                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.85f),
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                        "search" -> Icon(
+                                            imageVector = Icons.Default.Search,
+                                            contentDescription = "Search Lens",
+                                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.85f),
+                                            modifier = Modifier.size(17.dp)
+                                        )
+                                        else -> {
+                                            if (customShortcutApp != null) {
+                                                com.freelauncher.app.ui.components.AppIcon(
+                                                    app = customShortcutApp,
+                                                    mode = com.freelauncher.app.data.models.IconDisplayMode.ORIGINAL,
+                                                    iconPackManager = iconPackManager,
+                                                    size = 20.dp
+                                                )
+                                            } else {
+                                                Icon(
+                                                    imageVector = Icons.Outlined.MusicNote,
+                                                    contentDescription = "Music Shortcut",
+                                                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.85f),
+                                                    modifier = Modifier.size(18.dp)
+                                                )
+                                            }
+                                        }
+                                    }
                                 }
                             }
 
@@ -809,34 +818,23 @@ fun HomeScreen(
             }
         }
 
-        // 5. Direct Home Screen Scribble Search Live Ink Canvas & Overlay
+        // 5. Dedicated Home Screen Scribble Search Result Screen & Ink Canvas
         if (!isEditMode && state.enableScribbleSearch) {
             ScribbleSearchOverlay(
-                strokes = strokes,
-                currentStroke = currentStroke,
-                recognizedText = recognizedText,
-                matchingApps = matchingScribbleApps,
-                isRecognizing = isRecognizing,
+                strokes = scribbleState.strokes,
+                currentStroke = scribbleState.currentStroke,
+                recognizedText = scribbleState.recognizedQuery,
+                matchingApps = scribbleState.matchingApps,
+                isRecognizing = scribbleState.isRecognizing,
                 onLaunchApp = { app ->
-                    strokes = emptyList()
-                    currentStrokePoints = emptyList()
-                    recognizedText = ""
-                    matchingScribbleApps = emptyList()
+                    onClearScribble()
                     onLaunchApp(app)
                 },
                 onLongPressApp = { app ->
-                    strokes = emptyList()
-                    currentStrokePoints = emptyList()
-                    recognizedText = ""
-                    matchingScribbleApps = emptyList()
+                    onClearScribble()
                     onLongPressApp(app)
                 },
-                onClearScribble = {
-                    strokes = emptyList()
-                    currentStrokePoints = emptyList()
-                    recognizedText = ""
-                    matchingScribbleApps = emptyList()
-                },
+                onClearScribble = onClearScribble,
                 iconPackManager = iconPackManager,
                 appDrawerStyle = state.appDrawerStyle,
                 showMonograms = state.showMonograms,
@@ -848,8 +846,8 @@ fun HomeScreen(
             )
         }
 
-        // Bottom gesture hint when not in edit mode (Only shown if gesture hints setting is enabled)
-        if (!isEditMode && state.showGestureHints) {
+        // Bottom gesture hint when not in edit mode or searching (Only shown if gesture hints setting is enabled)
+        if (!isEditMode && !scribbleState.isActive && state.showGestureHints) {
             Column(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
@@ -866,6 +864,27 @@ fun HomeScreen(
                         style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
                         color = MaterialTheme.colorScheme.secondary.copy(alpha = 0.4f),
                         textAlign = TextAlign.Center
+                    )
+                }
+            }
+        }
+
+        // 6. Floating Minimalist Music Player Overlay
+        if (state.showMusicPlayerOverlay) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.55f))
+                    .clickable(onClick = onDismissMusicPlayer),
+                contentAlignment = Alignment.Center
+            ) {
+                Box(modifier = Modifier.clickable(enabled = false, onClick = {})) {
+                    com.freelauncher.app.ui.components.MinimalistMusicPlayerOverlay(
+                        playbackInfo = state.mediaPlaybackInfo,
+                        onTogglePlayPause = onTogglePlayPause,
+                        onSkipNext = onSkipNext,
+                        onSkipPrevious = onSkipPrevious,
+                        onDismiss = onDismissMusicPlayer
                     )
                 }
             }

@@ -84,6 +84,7 @@ class MainActivity : FragmentActivity() {
 
         setContent {
             val state by viewModel.uiState.collectAsStateWithLifecycle()
+            val scribbleState by viewModel.scribbleSearchState.collectAsStateWithLifecycle()
             val context = LocalContext.current
 
             LaunchedEffect(state.showWeatherBatteryGlance) {
@@ -175,7 +176,12 @@ class MainActivity : FragmentActivity() {
                 @Suppress("DEPRECATION")
                 val filter = android.content.IntentFilter(android.content.Intent.ACTION_WALLPAPER_CHANGED)
                 try {
-                    registerReceiver(wallpaperReceiver, filter)
+                    ContextCompat.registerReceiver(
+                        this@MainActivity,
+                        wallpaperReceiver,
+                        filter,
+                        ContextCompat.RECEIVER_EXPORTED
+                    )
                 } catch (_: Exception) {}
 
                 onDispose {
@@ -317,6 +323,14 @@ class MainActivity : FragmentActivity() {
                                     currentTimeFlow = viewModel.currentTime,
                                     onNavigate = onNavigate,
                                     onOpenSettings = onOpenSettings,
+                                    scribbleState = scribbleState,
+                                    onScribbleStrokeStarted = { pt -> viewModel.onScribbleStrokeStarted(pt) },
+                                    onScribbleStrokeUpdated = { pt -> viewModel.onScribbleStrokeUpdated(pt) },
+                                    onScribbleStrokeCompleted = { points, action, recognizer ->
+                                        viewModel.onScribbleStrokeCompleted(points, action, recognizer)
+                                    },
+                                    onClearScribble = { viewModel.clearScribbleSearch() },
+                                    onBackspaceScribble = { viewModel.onBackspaceScribble() },
                                     onLaunchApp = onLaunchApp,
                                     onLongPressApp = onLongPressApp,
                                     onOpenSearch = { viewModel.openSearchFromHome() },
@@ -324,13 +338,17 @@ class MainActivity : FragmentActivity() {
                                     onOpenDialer = { viewModel.openDialerApp(context) },
                                     onOpenClock = { viewModel.openClockApp(context) },
                                     onOpenCalendar = { viewModel.openCalendarApp(context) },
-                                    onDoubleTapToSleep = { viewModel.performDoubleTapToSleep(context) },
                                     onClockStyleChanged = onClockStyleChanged,
                                     onTimeCardOffsetChanged = onTimeCardOffsetChanged,
                                     onResetTimeCardOffset = onResetTimeCardOffset,
                                     onTimeCardScaleChanged = onTimeCardScaleChanged,
                                     onClockEditModeToggled = { onClockEditModeToggled(it) },
                                     onToggleUltraFocus = { onToggleLock() },
+                                    onOpenMusicPlayer = { viewModel.setShowMusicPlayerOverlay(true) },
+                                    onTogglePlayPause = { viewModel.toggleMediaPlayPause() },
+                                    onSkipNext = { viewModel.skipMediaNext() },
+                                    onSkipPrevious = { viewModel.skipMediaPrevious() },
+                                    onDismissMusicPlayer = { viewModel.setShowMusicPlayerOverlay(false) },
                                     iconPackManager = viewModel.iconPackManager
                                 )
                             }
@@ -458,7 +476,6 @@ class MainActivity : FragmentActivity() {
                             showNewsFeed = state.showNewsFeed,
                             showTimeAway = state.showTimeAway,
                             showWeatherBatteryGlance = state.showWeatherBatteryGlance,
-                            enableDoubleTapToSleep = state.enableDoubleTapToSleep,
                             enableSwipeDownSearch = state.enableSwipeDownSearch,
                             enableScribbleSearch = state.enableScribbleSearch,
                             enableMindfulPause = state.enableMindfulPause,
@@ -474,7 +491,6 @@ class MainActivity : FragmentActivity() {
                             onOpenWallpaperPicker = onOpenWallpaperPicker,
                             onMonogramsToggled = { viewModel.setShowMonograms(it) },
                             onGestureHintsToggled = { viewModel.setShowGestureHints(it) },
-                            onDoubleTapToSleepToggled = { viewModel.setDoubleTapToSleepEnabled(it) },
                             onSwipeDownSearchToggled = { viewModel.setSwipeDownSearchEnabled(it) },
                             onScribbleSearchToggled = { viewModel.setScribbleSearchEnabled(it) },
                             onMindfulPauseToggled = { viewModel.setMindfulPauseEnabled(it) },
@@ -503,6 +519,12 @@ class MainActivity : FragmentActivity() {
                             onOpenMinimalIconPackCreator = { viewModel.setShowMinimalIconPackCreator(true) },
                             hideEverythingOnHome = state.hideEverythingOnHome,
                             onHideEverythingOnHomeToggled = { viewModel.setHideEverythingOnHome(it) },
+                            disableSixAppsView = state.disableSixAppsView,
+                            onDisableSixAppsViewToggled = { viewModel.setDisableSixAppsView(it) },
+                            homeCustomShortcut = state.homeCustomShortcut,
+                            installedApps = state.installedApps,
+                            iconPackManager = viewModel.iconPackManager,
+                            onHomeCustomShortcutChanged = { viewModel.setHomeCustomShortcut(it) },
                         ) { viewModel.setSettingsSheetVisible(visible = false) }
                     }
 
@@ -604,17 +626,7 @@ class MainActivity : FragmentActivity() {
                         ) { viewModel.setWallpaperPickerVisible(visible = false) }
                     }
 
-                    // Accessibility Service Prominent Disclosure Dialog
-                    if (state.showAccessibilityDisclosureDialog) {
-                        AccessibilityDisclosureDialog(
-                            onConfirm = {
-                                viewModel.confirmAccessibilityDisclosure(this@MainActivity)
-                            },
-                            onDismiss = {
-                                viewModel.setAccessibilityDisclosureDialogVisible(false)
-                            }
-                        )
-                    }
+
 
                     // Atmospheric Theme Creator Dialog
                     if (state.showAtmosphericCreator) {

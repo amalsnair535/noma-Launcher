@@ -27,8 +27,8 @@ android {
     applicationId = "com.freelauncher.app"
     minSdk = 24
     targetSdk = 37
-    versionCode = 33
-    versionName = "4.5"
+    versionCode = 36
+    versionName = "4.8"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }
@@ -46,9 +46,18 @@ android {
     }
   }
 
+  splits {
+    abi {
+      isEnable = true
+      reset()
+      include("arm64-v8a", "armeabi-v7a")
+      isUniversalApk = true
+    }
+  }
+
   buildTypes {
     release {
-      isCrunchPngs = false
+      isCrunchPngs = true
       isMinifyEnabled = true
       isShrinkResources = true
       proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
@@ -59,7 +68,7 @@ android {
         signingConfigs.getByName("debug")
       }
       ndk {
-        debugSymbolLevel = "FULL"
+        debugSymbolLevel = "SYMBOL_TABLE"
       }
     }
     debug {

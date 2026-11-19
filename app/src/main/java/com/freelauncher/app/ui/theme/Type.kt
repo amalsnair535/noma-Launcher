@@ -17,7 +17,7 @@ enum class LauncherFont(val id: String, val displayName: String, val fontFamily:
     SEGOE_WP("segoe_wp", "Segoe WP (Metro)", FontFamily(android.graphics.Typeface.create("sans-serif-condensed", android.graphics.Typeface.NORMAL)), FontWeight.Light)
 }
 
-val LocalLauncherFont = compositionLocalOf { LauncherFont.MINIMAL_SANS }
+val LocalLauncherFont = compositionLocalOf { LauncherFont.MONOSPACE }
 
 fun getTypographyForFont(launcherFont: LauncherFont): Typography {
     val family = launcherFont.fontFamily
@@ -59,6 +59,13 @@ fun getTypographyForFont(launcherFont: LauncherFont): Typography {
             lineHeight = 32.sp,
             letterSpacing = 0.sp
         ),
+        headlineSmall = TextStyle(
+            fontFamily = family,
+            fontWeight = baseWeight,
+            fontSize = 20.sp,
+            lineHeight = 28.sp,
+            letterSpacing = 0.sp
+        ),
         titleLarge = TextStyle(
             fontFamily = family,
             fontWeight = FontWeight.Medium,
@@ -72,6 +79,13 @@ fun getTypographyForFont(launcherFont: LauncherFont): Typography {
             fontSize = 17.sp,
             lineHeight = 24.sp,
             letterSpacing = 0.2.sp
+        ),
+        titleSmall = TextStyle(
+            fontFamily = family,
+            fontWeight = FontWeight.Medium,
+            fontSize = 14.sp,
+            lineHeight = 20.sp,
+            letterSpacing = 0.1.sp
         ),
         bodyLarge = TextStyle(
             fontFamily = family,
@@ -87,12 +101,26 @@ fun getTypographyForFont(launcherFont: LauncherFont): Typography {
             lineHeight = 20.sp,
             letterSpacing = 0.25.sp
         ),
+        bodySmall = TextStyle(
+            fontFamily = family,
+            fontWeight = baseWeight,
+            fontSize = 12.sp,
+            lineHeight = 16.sp,
+            letterSpacing = 0.4.sp
+        ),
         labelLarge = TextStyle(
             fontFamily = family,
             fontWeight = FontWeight.Medium,
             fontSize = 14.sp,
             lineHeight = 20.sp,
             letterSpacing = 0.8.sp
+        ),
+        labelMedium = TextStyle(
+            fontFamily = family,
+            fontWeight = FontWeight.Medium,
+            fontSize = 12.sp,
+            lineHeight = 16.sp,
+            letterSpacing = 0.5.sp
         ),
         labelSmall = TextStyle(
             fontFamily = family,
@@ -104,4 +132,4 @@ fun getTypographyForFont(launcherFont: LauncherFont): Typography {
     )
 }
 
-val Typography = getTypographyForFont(LauncherFont.MINIMAL_SANS)
+val Typography = getTypographyForFont(LauncherFont.MONOSPACE)

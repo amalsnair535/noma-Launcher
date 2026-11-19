@@ -1,6 +1,7 @@
 package com.freelauncher.app.data.service
 
 import android.content.Context
+import com.freelauncher.app.ui.util.ScribbleStroke
 import com.google.mlkit.common.model.DownloadConditions
 import com.google.mlkit.common.model.RemoteModelManager
 import com.google.mlkit.vision.digitalink.DigitalInkRecognition
@@ -9,28 +10,41 @@ import com.google.mlkit.vision.digitalink.DigitalInkRecognitionModelIdentifier
 import com.google.mlkit.vision.digitalink.DigitalInkRecognizer
 import com.google.mlkit.vision.digitalink.DigitalInkRecognizerOptions
 import com.google.mlkit.vision.digitalink.Ink
+import com.google.mlkit.vision.digitalink.RecognitionContext
 import com.google.mlkit.vision.digitalink.RecognitionResult
-import com.freelauncher.app.ui.util.ScribbleStroke
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.tasks.await
+import kotlinx.coroutines.withContext
 
-class ScribbleRecognizer(private val context: Context) {
+/**
+ * On-device ML Kit Digital Ink Recognition service.
+ * Performs asynchronous handwriting recognition off the UI thread,
+ * supporting multi-stroke handwriting and language models.
+ */
+class ScribbleRecognizer(
+    private val context: Context,
+    languageTag: String = "en-US"
+) {
 
     private var recognizer: DigitalInkRecognizer? = null
     private var model: DigitalInkRecognitionModel? = null
-    private var isDownloadingModel = false
-    private var isModelReady = false
+    @Volatile private var isDownloadingModel = false
+    @Volatile private var isModelReady = false
 
     init {
-        initializeModel()
+        initializeModel(languageTag)
     }
 
-    private fun initializeModel() {
+    private fun initializeModel(languageTag: String) {
         try {
-            val modelIdentifier = DigitalInkRecognitionModelIdentifier.fromLanguageTag("en-US")
+            val modelIdentifier = DigitalInkRecognitionModelIdentifier.fromLanguageTag(languageTag)
+                ?: DigitalInkRecognitionModelIdentifier.fromLanguageTag("en-US")
+            
             if (modelIdentifier != null) {
-                model = DigitalInkRecognitionModel.builder(modelIdentifier).build()
+                val recognitionModel = DigitalInkRecognitionModel.builder(modelIdentifier).build()
+                model = recognitionModel
                 recognizer = DigitalInkRecognition.getClient(
-                    DigitalInkRecognizerOptions.builder(model!!).build()
+                    DigitalInkRecognizerOptions.builder(recognitionModel).build()
                 )
                 checkOrDownloadModel()
             }
@@ -67,15 +81,19 @@ class ScribbleRecognizer(private val context: Context) {
     }
 
     /**
-     * Converts UI strokes to an ML Kit Ink object and performs asynchronous handwriting recognition.
+     * Converts UI strokes to an ML Kit Ink object and performs asynchronous handwriting recognition
+     * on the Default dispatcher away from the main thread.
      */
-    suspend fun recognizeStrokes(strokes: List<ScribbleStroke>): List<String> {
+    suspend fun recognizeStrokes(
+        strokes: List<ScribbleStroke>,
+        preContext: String = ""
+    ): List<String> = withContext(Dispatchers.Default) {
         val activeRecognizer = recognizer
         if (activeRecognizer == null || strokes.isEmpty()) {
-            return emptyList()
+            return@withContext emptyList()
         }
 
-        return try {
+        try {
             val inkBuilder = Ink.builder()
             for (stroke in strokes) {
                 if (stroke.points.isEmpty()) continue
@@ -87,9 +105,17 @@ class ScribbleRecognizer(private val context: Context) {
             }
 
             val ink = inkBuilder.build()
-            if (ink.strokes.isEmpty()) return emptyList()
+            if (ink.strokes.isEmpty()) return@withContext emptyList()
 
-            val result: RecognitionResult = activeRecognizer.recognize(ink).await()
+            val result: RecognitionResult = if (preContext.isNotBlank()) {
+                val contextBuilder = RecognitionContext.builder()
+                    .setPreContext(preContext)
+                    .build()
+                activeRecognizer.recognize(ink, contextBuilder).await()
+            } else {
+                activeRecognizer.recognize(ink).await()
+            }
+
             result.candidates.map { it.text }
         } catch (e: Exception) {
             android.util.Log.e("ScribbleRecognizer", "Error recognizing handwriting ink", e)

@@ -629,6 +629,7 @@ fun LandscapeAppGridItem(
     iconPackPackage: String = "",
     iconPackManager: com.freelauncher.app.data.service.IconPackManager? = null,
     minimalConfig: com.freelauncher.app.data.models.MinimalIconPackConfig = com.freelauncher.app.data.models.MinimalIconPackConfig(),
+    alignment: com.freelauncher.app.data.models.SixAppsAlignment = com.freelauncher.app.data.models.SixAppsAlignment.LEFT,
     onClick: () -> Unit,
     onLongClick: () -> Unit,
     onTripleTap: () -> Unit,
@@ -664,7 +665,7 @@ fun LandscapeAppGridItem(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.Start
     ) {
-        val shouldShowIcon = iconDisplayMode != com.freelauncher.app.data.models.IconDisplayMode.TEXT_ONLY
+        val shouldShowIcon = iconDisplayMode != com.freelauncher.app.data.models.IconDisplayMode.TEXT_ONLY && alignment == com.freelauncher.app.data.models.SixAppsAlignment.LEFT
         if (shouldShowIcon) {
             com.freelauncher.app.ui.components.AppIcon(
                 app = app,
@@ -751,7 +752,7 @@ fun SixAppRowItem(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = rowArrangement
     ) {
-        val shouldShowIcon = iconDisplayMode != com.freelauncher.app.data.models.IconDisplayMode.TEXT_ONLY
+        val shouldShowIcon = iconDisplayMode != com.freelauncher.app.data.models.IconDisplayMode.TEXT_ONLY && alignment == com.freelauncher.app.data.models.SixAppsAlignment.LEFT
         if (shouldShowIcon) {
             com.freelauncher.app.ui.components.AppIcon(
                 app = app,

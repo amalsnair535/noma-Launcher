@@ -73,7 +73,8 @@ abstract class LauncherDatabase : RoomDatabase() {
                     "free_launcher_database"
                 )
                     .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
-                    .fallbackToDestructiveMigrationOnDowngrade(false)
+                    .fallbackToDestructiveMigration(true)
+                    .fallbackToDestructiveMigrationOnDowngrade(true)
                     .addCallback(object : Callback() {
                         override fun onCreate(db: SupportSQLiteDatabase) {
                             super.onCreate(db)
@@ -143,13 +144,13 @@ abstract class LauncherDatabase : RoomDatabase() {
                                     LauncherSettingEntity("time_card_scale", "1.0")
                                 )
                                 database.settingDao().setSetting(
-                                    LauncherSettingEntity("font_family", "minimal_sans")
+                                    LauncherSettingEntity("font_family", "monospace")
                                 )
                                 database.settingDao().setSetting(
                                     LauncherSettingEntity("theme_style", "oled_black")
                                 )
                                 database.settingDao().setSetting(
-                                    LauncherSettingEntity("wallpaper_id", "cyber_noir")
+                                    LauncherSettingEntity("wallpaper_id", "paper_craft_sunset")
                                 )
                                 database.settingDao().setSetting(
                                     LauncherSettingEntity("show_monograms", "true")

@@ -40,18 +40,15 @@
             </intent-filter>
         </activity>
 
-        <!-- Accessibility Service for Double-Tap to Sleep / Lock Screen -->
+        <!-- Notification Listener Service for Active Media Session Metadata -->
         <service
-            android:name=".data.service.NomaAccessibilityService"
+            android:name=".data.service.NomaNotificationListenerService"
             android:exported="true"
             android:label="@string/app_name"
-            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
             <intent-filter>
-                <action android:name="android.accessibilityservice.AccessibilityService" />
+                <action android:name="android.service.notification.NotificationListenerService" />
             </intent-filter>
-            <meta-data
-                android:name="android.accessibilityservice"
-                android:resource="@xml/accessibility_service_config" />
         </service>
     </application>
 

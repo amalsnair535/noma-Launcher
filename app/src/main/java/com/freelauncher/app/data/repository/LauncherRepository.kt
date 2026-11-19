@@ -298,6 +298,23 @@ class LauncherRepository(
         settingDao.setSetting(LauncherSettingEntity("app_drawer_style", style.name))
     }
 
+    suspend fun getDisableSixAppsView(): Boolean = withContext(Dispatchers.IO) {
+        val raw = settingDao.getSettingValue("disable_six_apps_view")
+        raw?.toBooleanStrictOrNull() ?: false
+    }
+
+    suspend fun saveDisableSixAppsView(disabled: Boolean) = withContext(Dispatchers.IO) {
+        settingDao.setSetting(LauncherSettingEntity("disable_six_apps_view", disabled.toString()))
+    }
+
+    suspend fun getHomeCustomShortcut(): String = withContext(Dispatchers.IO) {
+        settingDao.getSettingValue("home_custom_shortcut") ?: "music"
+    }
+
+    suspend fun saveHomeCustomShortcut(shortcut: String) = withContext(Dispatchers.IO) {
+        settingDao.setSetting(LauncherSettingEntity("home_custom_shortcut", shortcut))
+    }
+
     suspend fun getSixAppsAlignment(): SixAppsAlignment = withContext(Dispatchers.IO) {
         val raw = settingDao.getSettingValue("six_apps_alignment")
         if (raw != null) SixAppsAlignment.fromName(raw) else SixAppsAlignment.LEFT
@@ -309,7 +326,7 @@ class LauncherRepository(
 
     suspend fun getAllAppsAlignment(): AllAppsAlignment = withContext(Dispatchers.IO) {
         val raw = settingDao.getSettingValue("all_apps_alignment")
-        if (raw != null) AllAppsAlignment.fromName(raw) else AllAppsAlignment.CENTER
+        if (raw != null) AllAppsAlignment.fromName(raw) else AllAppsAlignment.LEFT
     }
 
     suspend fun saveAllAppsAlignment(alignment: AllAppsAlignment) = withContext(Dispatchers.IO) {

@@ -159,7 +159,18 @@ data class LauncherWallpaper(
             isDark = true
         )
 
+        val PAPER_CRAFT_SUNSET = LauncherWallpaper(
+            id = "paper_craft_sunset",
+            name = "Paper Horizon",
+            subtitle = "Vibrant layered papercraft sunset landscape",
+            category = WallpaperCategory.GRADIENT_ELEGANT,
+            colors = listOf(Color(0xFF0F4C81), Color(0xFFF97316), Color(0xFF0F172A)),
+            isDark = true,
+            drawableResId = com.freelauncher.app.R.drawable.paper_craft_sunset
+        )
+
         val ALL_WALLPAPERS: List<LauncherWallpaper> = listOf(
+            PAPER_CRAFT_SUNSET,
             OLED_VOID,
             MIDNIGHT_SLATE,
             DEEP_INDIGO,
@@ -176,7 +187,7 @@ data class LauncherWallpaper(
         )
 
         fun getById(id: String): LauncherWallpaper {
-            return ALL_WALLPAPERS.find { it.id == id } ?: CYBER_NOIR
+            return ALL_WALLPAPERS.find { it.id == id } ?: PAPER_CRAFT_SUNSET
         }
 
         fun fromEntity(entity: CustomWallpaperEntity): LauncherWallpaper {
