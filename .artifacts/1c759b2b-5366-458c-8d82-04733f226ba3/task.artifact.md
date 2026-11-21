@@ -1,5 +1,0 @@
-- `[x]` Add Google Play In-App Updates dependencies to version catalog and app build file
-- `[x]` Create `UpdateManager.kt` to handle Play Store update checks
-- `[x]` Add update check methods and state to `LauncherViewModel.kt`
-- `[x]` Add "Check for Updates" button to `AboutSheet.kt` and wire up in `MainActivity.kt`
-- `[x]` Verify build and run tests successfully
