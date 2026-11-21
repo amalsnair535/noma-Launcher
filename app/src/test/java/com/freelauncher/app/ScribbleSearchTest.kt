@@ -129,4 +129,39 @@ class ScribbleSearchTest {
         assertEquals("Chrome", matches[0].app.label)
         assertEquals("My Chrome", matches[1].app.label)
     }
+
+    @Test
+    fun testSingleVerticalStroke_MatchesLetterI() {
+        val apps = listOf(
+            AppItem(id = "1", label = "Instagram", packageName = "com.instagram.android"),
+            AppItem(id = "2", label = "IMDb", packageName = "com.imdb.mobile"),
+            AppItem(id = "3", label = "LinkedIn", packageName = "com.linkedin.android")
+        )
+
+        val results = InstalledAppMatcher.matchAppsWithHighlight(
+            installedApps = apps,
+            query = "I",
+            isScribbleSearch = true
+        )
+
+        assertEquals(2, results.size)
+        val matchedLabels = results.map { it.app.label }
+        assertTrue(matchedLabels.contains("Instagram"))
+        assertTrue(matchedLabels.contains("IMDb"))
+    }
+
+    @Test
+    fun testMultiStrokeCandidateDisambiguation_ForXandH() {
+        val xCandidates = listOf("+", "x", "X", "*", "/")
+        val resolvedX = com.freelauncher.app.data.service.ScribbleRecognizer.resolveCandidate(xCandidates, isMultiStroke = true)
+        assertEquals("X", resolvedX)
+
+        val hCandidates = listOf("|", "H", "h", "1")
+        val resolvedH = com.freelauncher.app.data.service.ScribbleRecognizer.resolveCandidate(hCandidates, isMultiStroke = true)
+        assertEquals("H", resolvedH)
+
+        val iCandidates = listOf("i", "1", "|")
+        val resolvedI = com.freelauncher.app.data.service.ScribbleRecognizer.resolveCandidate(iCandidates, isMultiStroke = false)
+        assertEquals("I", resolvedI)
+    }
 }

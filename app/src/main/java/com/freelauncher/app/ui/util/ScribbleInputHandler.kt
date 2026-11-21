@@ -65,17 +65,19 @@ fun Modifier.scribbleInputHandler(
                         }
 
                         val dist = hypot(currentX - lastX, currentY - lastY)
-                        if (dist > 8f) {
-                            if (!isStrokeActive) {
-                                isStrokeActive = true
-                                currentOnStrokeStarted(startPt)
+                        if (totalDist > 28f || isStrokeActive) {
+                            if (dist > 6f) {
+                                if (!isStrokeActive) {
+                                    isStrokeActive = true
+                                    currentOnStrokeStarted(startPt)
+                                }
+                                dragChange.consume()
+                                val pt = ScribblePoint(currentX, currentY)
+                                strokePoints.add(pt)
+                                currentOnStrokeUpdated(pt)
+                                lastX = currentX
+                                lastY = currentY
                             }
-                            dragChange.consume()
-                            val pt = ScribblePoint(currentX, currentY)
-                            strokePoints.add(pt)
-                            currentOnStrokeUpdated(pt)
-                            lastX = currentX
-                            lastY = currentY
                         }
                     } else {
                         break

@@ -478,6 +478,7 @@ class MainActivity : FragmentActivity() {
                             showWeatherBatteryGlance = state.showWeatherBatteryGlance,
                             enableSwipeDownSearch = state.enableSwipeDownSearch,
                             enableScribbleSearch = state.enableScribbleSearch,
+                            scribbleSpeedMs = state.scribbleSpeedMs,
                             enableMindfulPause = state.enableMindfulPause,
                             sixAppsScale = state.sixAppsScale,
                             temperatureUnit = state.temperatureUnit,
@@ -493,6 +494,7 @@ class MainActivity : FragmentActivity() {
                             onGestureHintsToggled = { viewModel.setShowGestureHints(it) },
                             onSwipeDownSearchToggled = { viewModel.setSwipeDownSearchEnabled(it) },
                             onScribbleSearchToggled = { viewModel.setScribbleSearchEnabled(it) },
+                            onScribbleSpeedChanged = { viewModel.setScribbleSpeedMs(it) },
                             onMindfulPauseToggled = { viewModel.setMindfulPauseEnabled(it) },
                             onSixAppsScaleChanged = { viewModel.setSixAppsScale(it) },
                             onNewsFeedToggled = { viewModel.setShowNewsFeed(it) },
@@ -580,6 +582,8 @@ class MainActivity : FragmentActivity() {
                     if (state.showPinUnlockSheet) {
                         PinUnlockSheet(
                             targetPin = state.customPin,
+                            lockoutSeconds = state.pinLockoutSeconds,
+                            onVerifyPin = { pin -> viewModel.verifyEnteredPin(pin) },
                             onPinCorrect = {
                                 viewModel.unlockAllApps()
                             },

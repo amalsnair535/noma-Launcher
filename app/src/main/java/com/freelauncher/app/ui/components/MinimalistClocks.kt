@@ -733,7 +733,7 @@ fun MinimalStackedClock(time: Date) {
                 fontWeight = FontWeight.Light,
                 lineHeight = 64.sp
             ),
-            color = MaterialTheme.colorScheme.secondary,
+            color = MaterialTheme.colorScheme.onBackground,
             textAlign = TextAlign.Center
         )
     }

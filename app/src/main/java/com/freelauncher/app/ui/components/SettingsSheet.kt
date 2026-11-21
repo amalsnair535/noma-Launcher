@@ -21,6 +21,7 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.automirrored.outlined.Article
+import androidx.compose.material.icons.automirrored.outlined.Chat
 import androidx.compose.material.icons.automirrored.outlined.OpenInNew
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
@@ -91,6 +92,8 @@ fun SettingsSheet(
     onSwipeDownSearchToggled: (Boolean) -> Unit = {},
     enableScribbleSearch: Boolean = false,
     onScribbleSearchToggled: (Boolean) -> Unit = {},
+    scribbleSpeedMs: Int = 300,
+    onScribbleSpeedChanged: (Int) -> Unit = {},
     enableMindfulPause: Boolean = false,
     onMindfulPauseToggled: (Boolean) -> Unit = {},
     onWeatherBatteryGlanceToggled: (Boolean) -> Unit = {},
@@ -740,12 +743,6 @@ fun SettingsSheet(
                                     }
 
                                     // Custom Home Shortcut Button
-                                    val customShortcutApp = remember(homeCustomShortcut, installedApps) {
-                                        if (homeCustomShortcut != "music" && homeCustomShortcut != "search") {
-                                            installedApps.find { it.packageName == homeCustomShortcut || it.id == homeCustomShortcut }
-                                        } else null
-                                    }
-
                                     Row(
                                         modifier = Modifier
                                             .fillMaxWidth()
@@ -761,9 +758,11 @@ fun SettingsSheet(
                                             Text("Custom Home Shortcut", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Medium))
                                             Text(
                                                 text = when (homeCustomShortcut) {
-                                                    "music" -> "Music (Default) • Opens floating player"
                                                     "search" -> "Search Lens • Opens universal search"
-                                                    else -> customShortcutApp?.label ?: homeCustomShortcut
+                                                    "music" -> "Music (Default) • Opens floating player"
+                                                    "whatsapp" -> "WhatsApp • Opens WhatsApp messaging"
+                                                    "camera" -> "Camera • Opens Camera app"
+                                                    else -> "Music (Default) • Opens floating player"
                                                 },
                                                 style = MaterialTheme.typography.bodySmall,
                                                 color = MaterialTheme.colorScheme.secondary
@@ -909,6 +908,41 @@ fun SettingsSheet(
                                                 }
                                             }
                                         )
+                                    }
+
+                                    if (enableScribbleSearch) {
+                                        HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.15f), modifier = Modifier.padding(horizontal = 16.dp))
+                                        Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.SpaceBetween,
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Text(
+                                                    text = "Scribble Speed / Timeout",
+                                                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Medium)
+                                                )
+                                                Text(
+                                                    text = "$scribbleSpeedMs ms",
+                                                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
+                                                    color = MaterialTheme.colorScheme.primary
+                                                )
+                                            }
+                                            Spacer(modifier = Modifier.height(2.dp))
+                                            Text(
+                                                text = "Delay window before evaluating multi-stroke letters (180 ms = fast, 550 ms = relaxed multi-stroke)",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.secondary
+                                            )
+                                            Spacer(modifier = Modifier.height(6.dp))
+                                            Slider(
+                                                value = scribbleSpeedMs.toFloat(),
+                                                onValueChange = { onScribbleSpeedChanged(it.toInt()) },
+                                                valueRange = 180f..550f,
+                                                steps = 36,
+                                                modifier = Modifier.fillMaxWidth()
+                                            )
+                                        }
                                     }
                                 }
                             }
@@ -1378,51 +1412,14 @@ fun SettingsSheet(
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .heightIn(max = 400.dp),
+                        .wrapContentHeight(),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     Text(
-                        text = "SYSTEM SHORTCUTS",
+                        text = "SHORTCUT OPTIONS",
                         style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, letterSpacing = 1.5.sp),
                         color = MaterialTheme.colorScheme.primary
                     )
-
-                    // Music
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(12.dp))
-                            .clickable {
-                                LauncherHaptics.playClick(context)
-                                onHomeCustomShortcutChanged("music")
-                                showShortcutPicker = false
-                            }
-                            .padding(horizontal = 12.dp, vertical = 10.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(36.dp)
-                                .clip(CircleShape)
-                                .background(MaterialTheme.colorScheme.primaryContainer),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                imageVector = Icons.Outlined.MusicNote,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                                modifier = Modifier.size(20.dp)
-                            )
-                        }
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text("Music (Default)", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold))
-                            Text("Opens floating Minimalist Music Player", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.secondary)
-                        }
-                        if (homeCustomShortcut == "music") {
-                            Icon(Icons.Default.Check, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
-                        }
-                    }
 
                     // Search
                     Row(
@@ -1461,50 +1458,114 @@ fun SettingsSheet(
                         }
                     }
 
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.15f), modifier = Modifier.padding(vertical = 4.dp))
-
-                    Text(
-                        text = "INSTALLED APPLICATIONS",
-                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, letterSpacing = 1.5.sp),
-                        color = MaterialTheme.colorScheme.primary
-                    )
-
-                    LazyColumn(
-                        modifier = Modifier.fillMaxWidth().weight(1f),
-                        verticalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        val appsList = installedApps.sortedBy { it.label.lowercase(Locale.ROOT) }
-                        items(appsList, key = { it.packageName }) { app ->
-                            val isSelected = homeCustomShortcut == app.packageName || homeCustomShortcut == app.id
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clip(RoundedCornerShape(12.dp))
-                                    .clickable {
-                                        LauncherHaptics.playClick(context)
-                                        onHomeCustomShortcutChanged(app.packageName)
-                                        showShortcutPicker = false
-                                    }
-                                    .padding(horizontal = 12.dp, vertical = 8.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(12.dp)
-                            ) {
-                                com.freelauncher.app.ui.components.AppIcon(
-                                    app = app,
-                                    mode = com.freelauncher.app.data.models.IconDisplayMode.ORIGINAL,
-                                    iconPackManager = iconPackManager,
-                                    size = 32.dp
-                                )
-                                Text(
-                                    text = app.label,
-                                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal),
-                                    color = MaterialTheme.colorScheme.onSurface,
-                                    modifier = Modifier.weight(1f)
-                                )
-                                if (isSelected) {
-                                    Icon(Icons.Default.Check, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
-                                }
+                    // Music
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .clickable {
+                                LauncherHaptics.playClick(context)
+                                onHomeCustomShortcutChanged("music")
+                                showShortcutPicker = false
                             }
+                            .padding(horizontal = 12.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(36.dp)
+                                .clip(CircleShape)
+                                .background(MaterialTheme.colorScheme.primaryContainer),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Outlined.MusicNote,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Music (Default)", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold))
+                            Text("Opens floating Minimalist Music Player", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.secondary)
+                        }
+                        if (homeCustomShortcut == "music") {
+                            Icon(Icons.Default.Check, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
+                        }
+                    }
+
+                    // WhatsApp
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .clickable {
+                                LauncherHaptics.playClick(context)
+                                onHomeCustomShortcutChanged("whatsapp")
+                                showShortcutPicker = false
+                            }
+                            .padding(horizontal = 12.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(36.dp)
+                                .clip(CircleShape)
+                                .background(MaterialTheme.colorScheme.surfaceVariant),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Outlined.Chat,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("WhatsApp", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold))
+                            Text("Opens WhatsApp messaging", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.secondary)
+                        }
+                        if (homeCustomShortcut == "whatsapp") {
+                            Icon(Icons.Default.Check, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
+                        }
+                    }
+
+                    // Camera
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .clickable {
+                                LauncherHaptics.playClick(context)
+                                onHomeCustomShortcutChanged("camera")
+                                showShortcutPicker = false
+                            }
+                            .padding(horizontal = 12.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(36.dp)
+                                .clip(CircleShape)
+                                .background(MaterialTheme.colorScheme.surfaceVariant),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Outlined.CameraAlt,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Camera", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold))
+                            Text("Opens Camera app", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.secondary)
+                        }
+                        if (homeCustomShortcut == "camera") {
+                            Icon(Icons.Default.Check, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
                         }
                     }
                 }
