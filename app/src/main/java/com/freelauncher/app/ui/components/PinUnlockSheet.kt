@@ -25,7 +25,9 @@ import com.freelauncher.app.ui.util.LauncherHaptics
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PinUnlockSheet(
-    targetPin: String,
+    targetPin: String = "",
+    lockoutSeconds: Int = 0,
+    onVerifyPin: (String) -> Boolean = { it == targetPin },
     onPinCorrect: () -> Unit,
     onSwitchToBiometric: () -> Unit,
     onDismiss: () -> Unit
@@ -33,6 +35,12 @@ fun PinUnlockSheet(
     val context = LocalContext.current
     var enteredPin by remember { mutableStateOf("") }
     var errorMessage by remember { mutableStateOf<String?>(null) }
+
+    val displayError = if (lockoutSeconds > 0) {
+        "Too many failed attempts. Try again in $lockoutSeconds s"
+    } else {
+        errorMessage
+    }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -109,9 +117,9 @@ fun PinUnlockSheet(
                 textAlign = TextAlign.Center
             )
 
-            if (errorMessage != null) {
+            if (displayError != null) {
                 Text(
-                    text = errorMessage!!,
+                    text = displayError,
                     style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
                     color = MaterialTheme.colorScheme.error,
                     textAlign = TextAlign.Center
@@ -146,12 +154,13 @@ fun PinUnlockSheet(
             // Numpad 0-9 & Backspace
             PinNumpad(
                 onDigitClick = { digit ->
-                    if (enteredPin.length < 4) {
+                    if (lockoutSeconds <= 0 && enteredPin.length < 4) {
                         LauncherHaptics.playClick(context)
                         val newPin = enteredPin + digit
                         enteredPin = newPin
                         if (newPin.length == 4) {
-                            if (newPin == targetPin) {
+                            val isCorrect = onVerifyPin(newPin)
+                            if (isCorrect) {
                                 LauncherHaptics.playClick(context)
                                 errorMessage = null
                                 onPinCorrect()
@@ -164,7 +173,7 @@ fun PinUnlockSheet(
                     }
                 },
                 onBackspaceClick = {
-                    if (enteredPin.isNotEmpty()) {
+                    if (lockoutSeconds <= 0 && enteredPin.isNotEmpty()) {
                         LauncherHaptics.playClick(context)
                         enteredPin = enteredPin.dropLast(1)
                     }

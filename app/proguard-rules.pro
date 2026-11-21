@@ -1,27 +1,20 @@
 # Add project specific ProGuard rules here.
-# You can control the set of applied configuration files using the
-# proguardFiles setting in build.gradle.
-#
-# For more details, see
-#   http://developer.android.com/guide/developing/tools/proguard.html
-
-# If your project uses WebView with JS, uncomment the following
-# and specify the fully qualified class name to the JavaScript interface
-# class:
-#-keepclassmembers class fqcn.of.javascript.interface.for.webview {
-#   public *;
-#}
 
 # Preserving line number information for debugging stack traces.
--keepattributes SourceFile,LineNumberTable
+-keepattributes SourceFile,LineNumberTable,*Annotation*,Signature,Exceptions,InnerClasses
 
 # Hide the original source file name.
 -renamesourcefileattribute SourceFile
+
+# Application, ViewModel & Data Layers
+-keep class com.freelauncher.app.** { *; }
+-keepclassmembers class com.freelauncher.app.** { *; }
 
 # Room Database Rules
 -keep class * extends androidx.room.RoomDatabase
 -keep class * extends androidx.room.Entity
 -keep class * extends androidx.room.Dao
+-dontwarn androidx.room.**
 
 # Moshi Rules
 -keep class com.squareup.moshi.** { *; }
@@ -29,15 +22,29 @@
 -keepclassmembers class * {
     @com.squareup.moshi.Json *;
 }
-# Keep classes with @JsonQualifier
 -keep @com.squareup.moshi.JsonQualifier class *
-
-# Keep classes used by Moshi (especially those with @JsonClass)
 -keep @com.squareup.moshi.JsonClass class *
 -keepclassmembers class * {
     @com.squareup.moshi.JsonClass *;
 }
 
-# Keep classes that are used as Room entities or Moshi models
--keep class com.freelauncher.app.data.db.** { *; }
--keep class com.freelauncher.app.data.models.** { *; }
+# Google ML Kit Digital Ink Recognition Rules
+-keep class com.google.mlkit.** { *; }
+-keep interface com.google.mlkit.** { *; }
+-keep class com.google.android.gms.internal.mlkit_vision_digital_ink_recognition.** { *; }
+-dontwarn com.google.mlkit.**
+
+# Firebase & Google Play Services Rules
+-keep class com.google.firebase.** { *; }
+-keep class com.google.android.gms.** { *; }
+-dontwarn com.google.firebase.**
+-dontwarn com.google.android.gms.**
+-dontwarn com.google.android.gms.internal.**
+
+# Coroutines, Retrofit & OkHttp
+-keep class kotlinx.coroutines.** { *; }
+-keep class retrofit2.** { *; }
+-keepclassmembers class * { @retrofit2.http.* <methods>; }
+-keep class okhttp3.** { *; }
+-dontwarn okhttp3.**
+-dontwarn retrofit2.**

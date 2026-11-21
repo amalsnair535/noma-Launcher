@@ -265,18 +265,15 @@ fun NeoMinimalAppDrawer(
                                         recognitionJob?.cancel()
                                         recognitionJob = scope.launch {
                                             isRecognizing = true
-                                            delay(180.milliseconds)
+                                            delay(state.scribbleSpeedMs.milliseconds)
                                             val candidates = scribbleRecognizer.recognizeStrokes(newStrokes)
                                             isRecognizing = false
+                                            scribbleStrokes = emptyList()
                                             if (candidates.isNotEmpty()) {
-                                                val rawCandidate = candidates.first().trim()
-                                                val resolvedCandidate = when {
-                                                    rawCandidate.equals("i", ignoreCase = true) || rawCandidate == "1" || rawCandidate == "|" -> {
-                                                        if (candidates.any { it.equals("l", ignoreCase = true) } && !candidates.any { it.equals("i", ignoreCase = true) }) "L" else "I"
-                                                    }
-                                                    rawCandidate.equals("l", ignoreCase = true) -> "L"
-                                                    else -> rawCandidate
-                                                }
+                                                val resolvedCandidate = com.freelauncher.app.data.service.ScribbleRecognizer.resolveCandidate(
+                                                    candidates = candidates,
+                                                    isMultiStroke = newStrokes.size > 1
+                                                )
                                                 if (resolvedCandidate.isNotBlank()) {
                                                     com.freelauncher.app.ui.util.LauncherHaptics.playClick(context)
                                                     val accumulatedQuery = (state.searchQuery + resolvedCandidate).uppercase(Locale.ROOT)

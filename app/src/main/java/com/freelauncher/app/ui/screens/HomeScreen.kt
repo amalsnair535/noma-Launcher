@@ -10,6 +10,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
@@ -21,7 +22,9 @@ import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.OpenWith
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.automirrored.outlined.Chat
 import androidx.compose.material.icons.outlined.Call
+import androidx.compose.material.icons.outlined.CameraAlt
 import androidx.compose.material.icons.outlined.MusicNote
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -166,10 +169,6 @@ fun HomeScreen(
         }
     }
 
-    // Multi-tap tracking for double tap to sleep and triple tap UltraFocus
-    var rootTapCount by remember { mutableIntStateOf(0) }
-    var lastRootTapTime by remember { mutableLongStateOf(0L) }
-
     val windowInfo = androidx.compose.ui.platform.LocalWindowInfo.current
     val screenWidthPx = windowInfo.containerSize.width.toFloat()
 
@@ -177,71 +176,39 @@ fun HomeScreen(
         modifier = modifier
             .fillMaxSize()
             .navigationBarsPadding()
-            .combinedClickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = null,
-                onClick = {
-                    if (isEditMode) {
-                        onClockEditModeToggled(false)
-                    } else if (scribbleState.isActive) {
-                        onClearScribble()
-                    } else {
+            .pointerInput(isEditMode, scribbleState.isActive) {
+                detectTapGestures(
+                    onTap = {
+                        if (isEditMode) {
+                            onClockEditModeToggled(false)
+                        } else if (scribbleState.isActive) {
+                            onClearScribble()
+                        }
+                    },
+                    onLongPress = {
                         val now = System.currentTimeMillis()
-                        val isDrawingActive = (now - lastScribbleTime) < 700L
-                        if (!isDrawingActive) {
-                            if (now - lastRootTapTime < 450) {
-                                rootTapCount++
-                            } else {
-                                rootTapCount = 1
-                            }
-                            lastRootTapTime = now
-
-                            if (rootTapCount >= 2) {
-                                rootTapCount = 0
-                                LauncherHaptics.playClick(context)
-                                onToggleUltraFocus()
-                            }
+                        val isDrawingOrRecent = scribbleState.isDrawing || scribbleState.isActive || (now - lastScribbleTime < 800L)
+                        if (!isEditMode && !isDrawingOrRecent) {
+                            onOpenSettings()
                         }
                     }
-                },
-                onLongClick = {
-                    val now = System.currentTimeMillis()
-                    val isDrawingOrRecent = scribbleState.isDrawing || scribbleState.isActive || (now - lastScribbleTime < 800L)
-                    if (!isEditMode && !isDrawingOrRecent) {
-                        onOpenSettings()
-                    }
-                }
-            )
+                )
+            }
             .scribbleInputHandler(
                 enabled = !isEditMode && state.enableScribbleSearch,
                 screenWidthPx = screenWidthPx,
                 isResultViewActive = scribbleState.isActive,
                 onStrokeStarted = { pt ->
-                    if (!scribbleState.isActive) {
-                        lastScribbleTime = System.currentTimeMillis()
-                        onScribbleStrokeStarted(pt)
-                    }
+                    lastScribbleTime = System.currentTimeMillis()
+                    onScribbleStrokeStarted(pt)
                 },
                 onStrokeUpdated = { pt ->
-                    if (!scribbleState.isActive) {
-                        lastScribbleTime = System.currentTimeMillis()
-                        onScribbleStrokeUpdated(pt)
-                    }
+                    lastScribbleTime = System.currentTimeMillis()
+                    onScribbleStrokeUpdated(pt)
                 },
                 onStrokeCompleted = { completedPoints, action ->
                     lastScribbleTime = System.currentTimeMillis()
-                    if (scribbleState.isActive) {
-                        when (action) {
-                            GesturalAction.SWIPE_UP,
-                            GesturalAction.SWIPE_DOWN,
-                            GesturalAction.SWIPE_LEFT,
-                            GesturalAction.SWIPE_RIGHT -> {
-                                LauncherHaptics.playClick(context)
-                                onClearScribble()
-                            }
-                            else -> { /* List scroll or tap inside results */ }
-                        }
-                    } else if (completedPoints.isNotEmpty()) {
+                    if (completedPoints.isNotEmpty()) {
                         when (action) {
                             GesturalAction.SWIPE_UP -> {
                                 onClearScribble()
@@ -252,12 +219,16 @@ fun HomeScreen(
                                 if (state.enableSwipeDownSearch) onOpenSearch()
                             }
                             GesturalAction.SWIPE_LEFT -> {
-                                onClearScribble()
-                                if (state.showNewsFeed) onNavigate(LauncherScreen.RSS_FEED)
+                                if (scribbleState.isActive) {
+                                    onBackspaceScribble()
+                                } else {
+                                    onClearScribble()
+                                    if (state.showNewsFeed) onNavigate(LauncherScreen.RSS_FEED)
+                                }
                             }
                             GesturalAction.SWIPE_RIGHT -> {
                                 onClearScribble()
-                                if (state.showTimeAway) onNavigate(LauncherScreen.TIME_AWAY)
+                                if (!scribbleState.isActive && state.showTimeAway) onNavigate(LauncherScreen.TIME_AWAY)
                             }
                             GesturalAction.HANDWRITING_STROKE -> {
                                 onScribbleStrokeCompleted(completedPoints, action, scribbleRecognizer)
@@ -265,6 +236,17 @@ fun HomeScreen(
                             GesturalAction.NONE -> {
                                 onClearScribble()
                             }
+                        }
+                    } else if (scribbleState.isActive) {
+                        when (action) {
+                            GesturalAction.SWIPE_UP,
+                            GesturalAction.SWIPE_DOWN,
+                            GesturalAction.SWIPE_LEFT,
+                            GesturalAction.SWIPE_RIGHT -> {
+                                LauncherHaptics.playClick(context)
+                                onClearScribble()
+                            }
+                            else -> { /* List scroll or tap inside results */ }
                         }
                     } else {
                         onClearScribble()
@@ -461,7 +443,7 @@ fun HomeScreen(
                             fontWeight = FontWeight.Normal,
                             letterSpacing = 0.5.sp
                         ),
-                        color = MaterialTheme.colorScheme.secondary,
+                        color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.92f),
                         textAlign = TextAlign.Center,
                         modifier = Modifier
                             .scale(clockAnimScale.coerceAtMost(1.2f))
@@ -501,10 +483,11 @@ fun HomeScreen(
 
                     // Quick Action Icons Row: Configurable Shortcut & Dialer Icon
                     if (!isEditMode) {
-                        val customShortcutApp = remember(state.homeCustomShortcut, state.installedApps) {
-                            if (state.homeCustomShortcut != "music" && state.homeCustomShortcut != "search") {
-                                state.installedApps.find { it.packageName == state.homeCustomShortcut || it.id == state.homeCustomShortcut }
-                            } else null
+                        val whatsappApp = remember(state.installedApps) {
+                            state.installedApps.find { it.packageName == "com.whatsapp" || it.packageName == "com.whatsapp.w4b" || it.label.equals("whatsapp", ignoreCase = true) }
+                        }
+                        val cameraApp = remember(state.installedApps) {
+                            state.installedApps.find { it.packageName.contains("camera") || it.label.equals("camera", ignoreCase = true) }
                         }
 
                         Row(
@@ -520,13 +503,35 @@ fun HomeScreen(
                                     when (state.homeCustomShortcut) {
                                         "music" -> onOpenMusicPlayer()
                                         "search" -> onOpenSearch()
-                                        else -> {
-                                            if (customShortcutApp != null) {
-                                                onLaunchApp(customShortcutApp)
+                                        "whatsapp" -> {
+                                            if (whatsappApp != null) {
+                                                onLaunchApp(whatsappApp)
                                             } else {
-                                                onOpenSearch()
+                                                try {
+                                                    val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("https://api.whatsapp.com")).apply {
+                                                        addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                                                    }
+                                                    context.startActivity(intent)
+                                                } catch (_: Exception) {
+                                                    onOpenSearch()
+                                                }
                                             }
                                         }
+                                        "camera" -> {
+                                            if (cameraApp != null) {
+                                                onLaunchApp(cameraApp)
+                                            } else {
+                                                try {
+                                                    val intent = android.content.Intent(android.provider.MediaStore.ACTION_IMAGE_CAPTURE).apply {
+                                                        addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                                                    }
+                                                    context.startActivity(intent)
+                                                } catch (_: Exception) {
+                                                    onOpenSearch()
+                                                }
+                                            }
+                                        }
+                                        else -> onOpenMusicPlayer()
                                     }
                                 },
                                 shape = CircleShape,
@@ -551,23 +556,24 @@ fun HomeScreen(
                                             tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.85f),
                                             modifier = Modifier.size(17.dp)
                                         )
-                                        else -> {
-                                            if (customShortcutApp != null) {
-                                                com.freelauncher.app.ui.components.AppIcon(
-                                                    app = customShortcutApp,
-                                                    mode = com.freelauncher.app.data.models.IconDisplayMode.ORIGINAL,
-                                                    iconPackManager = iconPackManager,
-                                                    size = 20.dp
-                                                )
-                                            } else {
-                                                Icon(
-                                                    imageVector = Icons.Outlined.MusicNote,
-                                                    contentDescription = "Music Shortcut",
-                                                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.85f),
-                                                    modifier = Modifier.size(18.dp)
-                                                )
-                                            }
-                                        }
+                                        "whatsapp" -> Icon(
+                                            imageVector = Icons.AutoMirrored.Outlined.Chat,
+                                            contentDescription = "WhatsApp Shortcut",
+                                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.85f),
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                        "camera" -> Icon(
+                                            imageVector = Icons.Outlined.CameraAlt,
+                                            contentDescription = "Camera Shortcut",
+                                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.85f),
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                        else -> Icon(
+                                            imageVector = Icons.Outlined.MusicNote,
+                                            contentDescription = "Music Shortcut",
+                                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.85f),
+                                            modifier = Modifier.size(18.dp)
+                                        )
                                     }
                                 }
                             }

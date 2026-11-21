@@ -21,7 +21,9 @@ import com.freelauncher.app.ui.components.TimeCardVerticalAlign
 import com.freelauncher.app.ui.theme.LauncherFont
 import com.freelauncher.app.ui.theme.LauncherThemeMode
 import com.freelauncher.app.ui.theme.LauncherWallpaper
+import com.freelauncher.app.ui.util.SecurityHelper
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.isActive
@@ -91,6 +93,9 @@ data class LauncherUiState(
     val biometricAuthTrigger: Long = 0L,
     val lockMethod: String = "pin",
     val customPin: String = "",
+    val pinSalt: String = "",
+    val pinHash: String = "",
+    val pinLockoutSeconds: Int = 0,
     val showSetPinDialog: Boolean = false,
     val showPinUnlockSheet: Boolean = false,
     val isSearchOnlyMode: Boolean = false,
@@ -102,6 +107,7 @@ data class LauncherUiState(
     val temperatureUnit: String = "F",
     val enableSwipeDownSearch: Boolean = false,
     val enableScribbleSearch: Boolean = false,
+    val scribbleSpeedMs: Int = 300,
     val enableMindfulPause: Boolean = false,
     val appPendingMindfulPause: AppItem? = null,
     val sixAppsScale: Float = 0.9f,
@@ -123,7 +129,10 @@ data class LauncherUiState(
     val homeCustomShortcut: String = "music",
     val showMusicPlayerOverlay: Boolean = false,
     val mediaPlaybackInfo: MediaPlaybackInfo = MediaPlaybackInfo()
-)
+) {
+    val hasPinSet: Boolean
+        get() = pinHash.isNotBlank()
+}
 
 class LauncherViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -134,7 +143,10 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
 
     private val _scribbleSearchState = MutableStateFlow(com.freelauncher.app.ui.util.ScribbleSearchState())
     val scribbleSearchState: StateFlow<com.freelauncher.app.ui.util.ScribbleSearchState> = _scribbleSearchState.asStateFlow()
-    private var scribbleRecognitionJob: kotlinx.coroutines.Job? = null
+    private var scribbleRecognitionJob: Job? = null
+    private var weatherJob: Job? = null
+    private var lockoutJob: Job? = null
+    private var failedPinAttempts = 0
 
     private val _currentTime = MutableStateFlow(Date())
     val currentTime: StateFlow<Date> = _currentTime.asStateFlow()
@@ -197,10 +209,26 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
                 val tempUnit = settingsMap["temperature_unit"] ?: "F"
                 val enableSwipeDownSearch = settingsMap["enable_swipe_down_search"] == "true"
                 val enableScribbleSearch = settingsMap["enable_scribble_search"] == "true"
+                val scribbleSpeedMs = settingsMap["scribble_speed_ms"]?.toIntOrNull()?.coerceIn(180, 550) ?: 300
                 val enableMindfulPause = settingsMap["enable_mindful_pause"] == "true"
                 val sixAppsScale = settingsMap["six_apps_scale"]?.toFloatOrNull() ?: 0.9f
                 val lockMethod = settingsMap["lock_method"] ?: "pin"
-                val customPin = settingsMap["custom_launcher_pin"] ?: ""
+                
+                var pinSalt = settingsMap["pin_salt"] ?: ""
+                var pinHash = settingsMap["pin_hash"] ?: ""
+                val legacyPin = settingsMap["custom_launcher_pin"] ?: ""
+
+                if (pinHash.isBlank() && legacyPin.isNotBlank()) {
+                    val (mSalt, mHash) = SecurityHelper.createPinHashPair(legacyPin)
+                    pinSalt = mSalt
+                    pinHash = mHash
+                    viewModelScope.launch {
+                        repository.updateSetting("pin_salt", mSalt)
+                        repository.updateSetting("pin_hash", mHash)
+                        repository.updateSetting("custom_launcher_pin", "")
+                    }
+                }
+
                 val enableLandscapeMode = settingsMap["enable_landscape_mode"] == "true"
 
                 val iconDisplayMode = repository.getIconDisplayMode()
@@ -232,7 +260,9 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
                         customGreeting = greeting,
                         isBiometricLockEnabled = biometricLock,
                         lockMethod = lockMethod,
-                        customPin = customPin,
+                        customPin = legacyPin,
+                        pinSalt = pinSalt,
+                        pinHash = pinHash,
                         showGestureHints = gestureHints,
                         showNewsFeed = showNewsFeed,
                         showTimeAway = showTimeAway,
@@ -241,6 +271,7 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
                         temperatureUnit = tempUnit,
                         enableSwipeDownSearch = enableSwipeDownSearch,
                         enableScribbleSearch = enableScribbleSearch,
+                        scribbleSpeedMs = scribbleSpeedMs,
                         enableMindfulPause = enableMindfulPause,
                         sixAppsScale = sixAppsScale.coerceIn(0.6f, 1.8f),
                         enableLandscapeMode = enableLandscapeMode,
@@ -372,7 +403,6 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
                     }
                 }
 
-                // Sync sanitized valid ID list back to repository if there was any ghost app
                 if (pinnedIds.isNotEmpty() && (pinnedIds.size != validPinnedIds.size) && installedIds.isNotEmpty()) {
                     repository.setPinnedIds(validPinnedIds)
                 }
@@ -541,7 +571,7 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
             pendingSearchUnlock = true
             pendingDisableBiometric = false
             if (_uiState.value.lockMethod == "pin") {
-                if (_uiState.value.customPin.isBlank()) {
+                if (!_uiState.value.hasPinSet) {
                     _uiState.update { it.copy(showSetPinDialog = true) }
                 } else {
                     _uiState.update { it.copy(showPinUnlockSheet = true) }
@@ -571,7 +601,7 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
             pendingDisableBiometric = false
             _uiState.update { it.copy(searchQuery = query, isScribbleSearchMode = true) }
             if (_uiState.value.lockMethod == "pin") {
-                if (_uiState.value.customPin.isBlank()) {
+                if (!_uiState.value.hasPinSet) {
                     _uiState.update { it.copy(showSetPinDialog = true) }
                 } else {
                     _uiState.update { it.copy(showPinUnlockSheet = true) }
@@ -708,7 +738,6 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
             val pm = context.packageManager
             var intent: Intent? = null
 
-            // Try specific launcher activity for the target app
             if (app.activityName.isNotBlank()) {
                 val explicitIntent = Intent(Intent.ACTION_MAIN).apply {
                     addCategory(Intent.CATEGORY_LAUNCHER)
@@ -720,7 +749,6 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
                 }
             }
 
-            // Fallback to default package launch intent
             if (intent == null) {
                 intent = pm.getLaunchIntentForPackage(app.packageName)?.apply {
                     addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED)
@@ -781,7 +809,6 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
             val uri = Uri.parse(url.trim())
             val scheme = uri.scheme?.lowercase(java.util.Locale.ROOT) ?: ""
 
-            // Strictly allow only safe web, store, and mail schemes
             val allowedSchemes = setOf("https", "http", "market", "mailto")
             if (scheme !in allowedSchemes) {
                 android.util.Log.w("LauncherVM", "Rejected launching URI with untrusted scheme: $scheme")
@@ -868,7 +895,6 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
             context.startActivity(calendarIntent)
             return
         } catch (_: Exception) {
-            // Try package fallback
             val pm = context.packageManager
             val packages = listOf("com.google.android.calendar", "com.android.calendar", "com.samsung.android.calendar")
             for (pkg in packages) {
@@ -1100,11 +1126,10 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     // Biometric / Fingerprint & PIN Lock
     fun setBiometricLockEnabled(enabled: Boolean) {
         if (!enabled && _uiState.value.isBiometricLockEnabled) {
-            // Require authentication before disabling lock
             pendingDisableBiometric = true
             pendingSearchUnlock = false
             if (_uiState.value.lockMethod == "pin") {
-                if (_uiState.value.customPin.isBlank()) {
+                if (!_uiState.value.hasPinSet) {
                     _uiState.update { it.copy(showSetPinDialog = true) }
                 } else {
                     _uiState.update { it.copy(showPinUnlockSheet = true) }
@@ -1121,7 +1146,7 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     }
 
     fun setLockMethod(method: String) {
-        if (method == "biometric" && _uiState.value.lockMethod == "pin" && _uiState.value.isBiometricLockEnabled && _uiState.value.customPin.isNotBlank()) {
+        if (method == "biometric" && _uiState.value.lockMethod == "pin" && _uiState.value.isBiometricLockEnabled && _uiState.value.hasPinSet) {
             pendingSwitchLockMethod = "biometric"
             pendingDisableBiometric = false
             pendingSearchUnlock = false
@@ -1136,11 +1161,62 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
 
     fun setCustomPin(pin: String) {
         viewModelScope.launch {
-            _uiState.update { it.copy(customPin = pin, showSetPinDialog = false) }
-            repository.updateSetting("custom_launcher_pin", pin)
+            val (salt, hash) = SecurityHelper.createPinHashPair(pin)
+            _uiState.update {
+                it.copy(
+                    customPin = "",
+                    pinSalt = salt,
+                    pinHash = hash,
+                    showSetPinDialog = false
+                )
+            }
+            repository.updateSetting("pin_salt", salt)
+            repository.updateSetting("pin_hash", hash)
+            repository.updateSetting("custom_launcher_pin", "")
             if (!_uiState.value.isBiometricLockEnabled) {
                 setBiometricLockEnabled(true)
             }
+        }
+    }
+
+    fun verifyEnteredPin(enteredPin: String): Boolean {
+        if (_uiState.value.pinLockoutSeconds > 0) return false
+        val isCorrect = SecurityHelper.verifyPin(
+            enteredPin = enteredPin,
+            saltHex = _uiState.value.pinSalt,
+            targetHashHex = _uiState.value.pinHash
+        )
+        if (isCorrect) {
+            failedPinAttempts = 0
+            return true
+        } else {
+            failedPinAttempts++
+            if (failedPinAttempts >= 5) {
+                startPinLockout(30)
+            }
+            return false
+        }
+    }
+
+    private fun startPinLockout(seconds: Int) {
+        lockoutJob?.cancel()
+        lockoutJob = viewModelScope.launch {
+            var remaining = seconds
+            while (remaining > 0) {
+                _uiState.update { it.copy(pinLockoutSeconds = remaining) }
+                delay(1000.milliseconds)
+                remaining--
+            }
+            _uiState.update { it.copy(pinLockoutSeconds = 0) }
+            failedPinAttempts = 0
+        }
+    }
+
+    fun onBiometricUnavailableFallback() {
+        if (_uiState.value.hasPinSet) {
+            _uiState.update { it.copy(pendingBiometricUnlock = false, showPinUnlockSheet = true) }
+        } else {
+            _uiState.update { it.copy(pendingBiometricUnlock = false) }
         }
     }
 
@@ -1201,7 +1277,7 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
             pendingSearchUnlock = false
             pendingDisableBiometric = false
             if (_uiState.value.lockMethod == "pin") {
-                if (_uiState.value.customPin.isBlank()) {
+                if (!_uiState.value.hasPinSet) {
                     _uiState.update { it.copy(showSetPinDialog = true) }
                 } else {
                     _uiState.update { it.copy(showPinUnlockSheet = true) }
@@ -1315,6 +1391,14 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
+    fun setScribbleSpeedMs(speedMs: Int) {
+        val clamped = speedMs.coerceIn(180, 550)
+        _uiState.update { it.copy(scribbleSpeedMs = clamped) }
+        viewModelScope.launch {
+            repository.updateSetting("scribble_speed_ms", clamped.toString())
+        }
+    }
+
     fun onScribbleStrokeStarted(point: com.freelauncher.app.ui.util.ScribblePoint) {
         _scribbleSearchState.update { state ->
             state.copy(currentStroke = com.freelauncher.app.ui.util.ScribbleStroke(listOf(point)))
@@ -1345,7 +1429,8 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
             }
             com.freelauncher.app.ui.util.GesturalAction.HANDWRITING_STROKE -> {
                 val newStroke = com.freelauncher.app.ui.util.ScribbleStroke(points)
-                val updatedStrokes = listOf(newStroke)
+                val currentStrokes = _scribbleSearchState.value.strokes
+                val updatedStrokes = currentStrokes + newStroke
                 val nextRequestId = _scribbleSearchState.value.requestId + 1
                 _scribbleSearchState.update {
                     it.copy(
@@ -1357,21 +1442,29 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
 
                 scribbleRecognitionJob?.cancel()
                 scribbleRecognitionJob = viewModelScope.launch {
-                    delay(120.milliseconds)
+                    delay(_uiState.value.scribbleSpeedMs.milliseconds)
                     val candidates = recognizer.recognizeStrokes(updatedStrokes)
                     if (_scribbleSearchState.value.requestId == nextRequestId) {
                         _scribbleSearchState.update { it.copy(isRecognizing = false) }
                         if (candidates.isNotEmpty()) {
-                            val rawCandidate = candidates.first().trim()
-                            val resolvedCandidate = when {
-                                rawCandidate.equals("i", ignoreCase = true) || rawCandidate == "1" || rawCandidate == "|" -> {
-                                    if (candidates.any { c -> c.equals("l", ignoreCase = true) }) "L" else "I"
-                                }
-                                rawCandidate.equals("l", ignoreCase = true) -> "L"
-                                else -> rawCandidate
-                            }
+                            val resolvedCandidate = com.freelauncher.app.data.service.ScribbleRecognizer.resolveCandidate(
+                                candidates = candidates,
+                                isMultiStroke = updatedStrokes.size > 1
+                            )
                             if (resolvedCandidate.isNotBlank()) {
-                                updateScribbleQuery(resolvedCandidate)
+                                val currQuery = _scribbleSearchState.value.recognizedQuery
+                                val nextQuery = if (currQuery.isNotEmpty()) {
+                                    val combined = currQuery + resolvedCandidate
+                                    val combinedMatches = com.freelauncher.app.data.service.InstalledAppMatcher.matchAppsWithHighlight(
+                                        installedApps = _uiState.value.installedApps,
+                                        query = combined,
+                                        isScribbleSearch = true
+                                    )
+                                    if (combinedMatches.isNotEmpty()) combined else resolvedCandidate
+                                } else {
+                                    resolvedCandidate
+                                }
+                                updateScribbleQuery(nextQuery)
                             } else {
                                 _scribbleSearchState.update { it.copy(strokes = emptyList(), currentStroke = null) }
                             }
@@ -1430,8 +1523,8 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
-    fun checkForUpdates(context: android.content.Context) {
-        val updateManager = com.freelauncher.app.data.service.UpdateManager(context)
+    fun checkForUpdates(context: Context) {
+        val updateManager = UpdateManager(context)
         updateManager.checkForUpdate {
             android.widget.Toast.makeText(context, "A new update is available on the Play Store!", android.widget.Toast.LENGTH_LONG).show()
         }
@@ -1449,28 +1542,28 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         _uiState.update { it.copy(showAboutSheet = visible) }
     }
 
-    fun setIconDisplayMode(mode: com.freelauncher.app.data.models.IconDisplayMode) {
+    fun setIconDisplayMode(mode: IconDisplayMode) {
         _uiState.update { it.copy(iconDisplayMode = mode) }
         viewModelScope.launch {
             repository.saveIconDisplayMode(mode)
         }
     }
 
-    fun setAppDrawerStyle(style: com.freelauncher.app.data.models.AppDrawerStyle) {
+    fun setAppDrawerStyle(style: AppDrawerStyle) {
         _uiState.update { it.copy(appDrawerStyle = style) }
         viewModelScope.launch {
             repository.saveAppDrawerStyle(style)
         }
     }
 
-    fun setSixAppsAlignment(alignment: com.freelauncher.app.data.models.SixAppsAlignment) {
+    fun setSixAppsAlignment(alignment: SixAppsAlignment) {
         _uiState.update { it.copy(sixAppsAlignment = alignment) }
         viewModelScope.launch {
             repository.saveSixAppsAlignment(alignment)
         }
     }
 
-    fun setAllAppsAlignment(alignment: com.freelauncher.app.data.models.AllAppsAlignment) {
+    fun setAllAppsAlignment(alignment: AllAppsAlignment) {
         _uiState.update { it.copy(allAppsAlignment = alignment) }
         viewModelScope.launch {
             repository.saveAllAppsAlignment(alignment)
@@ -1484,7 +1577,7 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
-    fun saveMinimalIconPackConfig(config: com.freelauncher.app.data.models.MinimalIconPackConfig) {
+    fun saveMinimalIconPackConfig(config: MinimalIconPackConfig) {
         _uiState.update { it.copy(minimalIconPackConfig = config, showMinimalIconPackCreator = false) }
         viewModelScope.launch {
             repository.saveMinimalIconPackConfig(config)
@@ -1515,10 +1608,17 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
             com.freelauncher.app.ui.util.SafeCrashlytics.logException(e)
         }
 
-        viewModelScope.launch {
-            while (isActive) {
-                refreshWeather()
-                delay(1800000.milliseconds)
+        updateWeatherMonitoringState()
+    }
+
+    private fun updateWeatherMonitoringState() {
+        weatherJob?.cancel()
+        if (_uiState.value.showWeatherBatteryGlance) {
+            weatherJob = viewModelScope.launch {
+                while (isActive) {
+                    refreshWeather()
+                    delay(1800000.milliseconds)
+                }
             }
         }
     }
@@ -1552,6 +1652,7 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         viewModelScope.launch {
             repository.updateSetting("show_weather_battery_glance", enabled.toString())
         }
+        updateWeatherMonitoringState()
     }
 
     fun setTemperatureUnit(unit: String) {
@@ -1580,5 +1681,9 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
 
     override fun onCleared() {
         super.onCleared()
+        mediaSessionManager.release()
+        weatherJob?.cancel()
+        lockoutJob?.cancel()
+        scribbleRecognitionJob?.cancel()
     }
 }

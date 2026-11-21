@@ -27,8 +27,8 @@ android {
     applicationId = "com.freelauncher.app"
     minSdk = 24
     targetSdk = 37
-    versionCode = 36
-    versionName = "4.8"
+    versionCode = 39
+    versionName = "5.0"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }
@@ -48,7 +48,9 @@ android {
 
   splits {
     abi {
-      isEnable = true
+      // Disable ABI splits for App Bundle compatibility and resource shrinking (AGP issue 402800800).
+      // Play App Bundles (.aab) automatically split ABIs on Google Play servers.
+      isEnable = false
       reset()
       include("arm64-v8a", "armeabi-v7a")
       isUniversalApk = true
@@ -62,10 +64,10 @@ android {
       isShrinkResources = true
       proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
       val keystorePath = System.getenv("KEYSTORE_PATH") ?: "$rootDir/my-upload-key.jks"
-      signingConfig = if (file(keystorePath).exists()) {
-        signingConfigs.getByName("release")
+      if (file(keystorePath).exists()) {
+        signingConfig = signingConfigs.getByName("release")
       } else {
-        signingConfigs.getByName("debug")
+        signingConfig = signingConfigs.getByName("debug")
       }
       ndk {
         debugSymbolLevel = "SYMBOL_TABLE"
@@ -101,98 +103,7 @@ android {
   }
 }
 
-abstract class AlignElf16KbTask : DefaultTask() {
-  @get:InputDirectory
-  @get:Optional
-  @get:PathSensitive(PathSensitivity.RELATIVE)
-  abstract val jniDir1: DirectoryProperty
 
-  @get:OutputDirectory
-  @get:Optional
-  abstract val outDir1: DirectoryProperty
-
-  @get:InputDirectory
-  @get:Optional
-  @get:PathSensitive(PathSensitivity.RELATIVE)
-  abstract val jniDir2: DirectoryProperty
-
-  @get:OutputDirectory
-  @get:Optional
-  abstract val outDir2: DirectoryProperty
-
-  @get:InputDirectory
-  @get:Optional
-  @get:PathSensitive(PathSensitivity.RELATIVE)
-  abstract val jniDir3: DirectoryProperty
-
-  @get:OutputDirectory
-  @get:Optional
-  abstract val outDir3: DirectoryProperty
-
-  @TaskAction
-  fun process() {
-    listOfNotNull(jniDir1.orNull, jniDir2.orNull, jniDir3.orNull).forEach { dirProp ->
-      val dir = dirProp.asFile
-      if (dir.exists()) {
-        dir.walkTopDown().filter { it.isFile && it.extension == "so" }.forEach { file ->
-          patchElf(file)
-        }
-      }
-    }
-  }
-
-  private fun patchElf(file: File): Boolean {
-    if (!file.exists() || file.extension != "so") return false
-    val bytes = file.readBytes()
-    if (bytes.size < 64) return false
-    if (bytes[0] != 0x7F.toByte() || bytes[1] != 0x45.toByte() || bytes[2] != 0x4C.toByte() || bytes[3] != 0x46.toByte()) return false
-    if (bytes[4] != 2.toByte() || bytes[5] != 1.toByte()) return false
-
-    val buffer = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN)
-    val e_phoff = buffer.getLong(0x20)
-    val e_phentsize = buffer.getShort(0x36).toInt()
-    val e_phnum = buffer.getShort(0x38).toInt()
-
-    var modified = false
-    for (i in 0 until e_phnum) {
-      val phOffset = (e_phoff + i * e_phentsize).toInt()
-      if (phOffset + 0x38 > bytes.size) break
-      val p_type = buffer.getInt(phOffset)
-      if (p_type == 1) { // PT_LOAD
-        val p_align = buffer.getLong(phOffset + 0x30)
-        if (p_align < 0x4000L) { // Less than 16 KB (16384)
-          buffer.putLong(phOffset + 0x30, 0x4000L)
-          modified = true
-        }
-      }
-    }
-
-    if (modified) {
-      file.writeBytes(bytes)
-    }
-    return modified
-  }
-}
-
-val alignElfTask = tasks.register("alignElf16Kb", AlignElf16KbTask::class.java) {
-  description = "Aligns ELF program headers for 16 KB page size compatibility"
-  val d1 = layout.buildDirectory.dir("intermediates/merged_jni_libs")
-  val d2 = layout.buildDirectory.dir("intermediates/merged_native_libs")
-  val d3 = layout.buildDirectory.dir("intermediates/stripped_native_libs")
-  jniDir1.set(d1)
-  outDir1.set(d1)
-  jniDir2.set(d2)
-  outDir2.set(d2)
-  jniDir3.set(d3)
-  outDir3.set(d3)
-  mustRunAfter(tasks.matching { 
-    (it.name.startsWith("merge") && (it.name.contains("Jni") || it.name.contains("Native"))) || it.name.startsWith("strip") || it.name.startsWith("extract")
-  })
-}
-
-tasks.matching { it.name.startsWith("package") }.configureEach {
-  dependsOn(alignElfTask)
-}
 
 // Configure the Secrets Gradle Plugin to use .env and .env.example files
 // to match the convention used in Web projects.

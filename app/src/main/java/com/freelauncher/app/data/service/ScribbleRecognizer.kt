@@ -128,4 +128,45 @@ class ScribbleRecognizer(
             recognizer?.close()
         } catch (_: Exception) {}
     }
+
+    companion object {
+        /**
+         * Selects and disambiguates the best candidate from handwriting recognition results.
+         * For multi-stroke shapes (strokes.size >= 2), prioritizes letter candidates (such as 'X', 'H', 'T', 'K')
+         * over single vertical bar candidates ('I', '1') or math/slash symbols ('+', '*', '/').
+         */
+        fun resolveCandidate(candidates: List<String>, isMultiStroke: Boolean): String {
+            if (candidates.isEmpty()) return ""
+
+            val cleaned = candidates.map { it.trim() }.filter { it.isNotEmpty() }
+            if (cleaned.isEmpty()) return ""
+
+            val top = cleaned.first()
+
+            if (isMultiStroke) {
+                // If 2+ strokes were drawn, look for an explicit single letter/digit that is not 'I', '1', or '|'
+                val letterCand = cleaned.firstOrNull { cand ->
+                    cand.length == 1 && cand.first().isLetterOrDigit() &&
+                        !cand.equals("i", ignoreCase = true) && cand != "1" && cand != "|"
+                }
+                if (letterCand != null) {
+                    return letterCand.uppercase()
+                }
+
+                // Fallback to any single letter/digit candidate
+                val anyLetter = cleaned.firstOrNull { cand -> cand.length == 1 && cand.first().isLetterOrDigit() }
+                if (anyLetter != null) {
+                    return anyLetter.uppercase()
+                }
+            }
+
+            return when {
+                top.equals("i", ignoreCase = true) || top == "1" || top == "|" -> "I"
+                top.equals("l", ignoreCase = true) -> {
+                    if (cleaned.take(3).any { c -> c.equals("i", ignoreCase = true) || c == "1" || c == "|" }) "I" else "L"
+                }
+                else -> top.uppercase()
+            }
+        }
+    }
 }
