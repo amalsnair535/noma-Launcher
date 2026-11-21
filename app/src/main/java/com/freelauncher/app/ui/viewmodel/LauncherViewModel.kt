@@ -106,7 +106,7 @@ data class LauncherUiState(
     val showWeatherBatteryGlance: Boolean = false,
     val temperatureUnit: String = "F",
     val enableSwipeDownSearch: Boolean = false,
-    val enableScribbleSearch: Boolean = false,
+    val enableScribbleSearch: Boolean = true,
     val scribbleSpeedMs: Int = 300,
     val enableMindfulPause: Boolean = false,
     val appPendingMindfulPause: AppItem? = null,
@@ -208,7 +208,7 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
                 val showWeatherGlance = settingsMap["show_weather_battery_glance"] == "true"
                 val tempUnit = settingsMap["temperature_unit"] ?: "F"
                 val enableSwipeDownSearch = settingsMap["enable_swipe_down_search"] == "true"
-                val enableScribbleSearch = settingsMap["enable_scribble_search"] == "true"
+                val enableScribbleSearch = settingsMap["enable_scribble_search"] != "false"
                 val scribbleSpeedMs = settingsMap["scribble_speed_ms"]?.toIntOrNull()?.coerceIn(180, 550) ?: 300
                 val enableMindfulPause = settingsMap["enable_mindful_pause"] == "true"
                 val sixAppsScale = settingsMap["six_apps_scale"]?.toFloatOrNull() ?: 0.9f

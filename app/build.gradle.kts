@@ -27,8 +27,8 @@ android {
     applicationId = "com.freelauncher.app"
     minSdk = 24
     targetSdk = 37
-    versionCode = 39
-    versionName = "5.0"
+    versionCode = 48
+    versionName = "5.6"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }
@@ -98,9 +98,89 @@ android {
   }
   packaging {
     jniLibs {
+      // Store native shared libraries uncompressed with 16 KB page boundary zipalign in App Bundles (.aab)
       useLegacyPackaging = false
     }
   }
+}
+
+// 16 KB ELF Segment Alignment Gradle Task for Google Play Compliance
+val buildDirFile = layout.buildDirectory.get().asFile
+tasks.register("alignNativeLibs16KB") {
+  val nativeDirs = listOf(
+    File(buildDirFile, "intermediates/merged_native_libs"),
+    File(buildDirFile, "intermediates/stripped_native_libs")
+  )
+  doLast {
+    for (baseDir in nativeDirs) {
+      if (baseDir.exists()) {
+        baseDir.walkTopDown().filter { it.extension == "so" }.forEach { soFile ->
+          try {
+            val bytes = soFile.readBytes()
+            if (bytes.size > 64 && bytes[0] == 0x7F.toByte() && bytes[1] == 'E'.code.toByte() && bytes[2] == 'L'.code.toByte() && bytes[3] == 'F'.code.toByte()) {
+              var modified = false
+              val is64Bit = (bytes[4] == 2.toByte())
+              if (is64Bit) {
+                val phoff = ByteBuffer.wrap(bytes, 32, 8).order(ByteOrder.LITTLE_ENDIAN).long
+                val phentsize = ByteBuffer.wrap(bytes, 54, 2).order(ByteOrder.LITTLE_ENDIAN).short.toInt()
+                val phnum = ByteBuffer.wrap(bytes, 56, 2).order(ByteOrder.LITTLE_ENDIAN).short.toInt()
+
+                for (i in 0 until phnum) {
+                  val offset = (phoff + (i * phentsize)).toInt()
+                  if (offset + 56 <= bytes.size) {
+                    val pType = ByteBuffer.wrap(bytes, offset, 4).order(ByteOrder.LITTLE_ENDIAN).int
+                    if (pType == 1) { // PT_LOAD
+                      val pAlignOffset = offset + 48
+                      val pAlign = ByteBuffer.wrap(bytes, pAlignOffset, 8).order(ByteOrder.LITTLE_ENDIAN).long
+                      if (pAlign < 16384L) {
+                        val newAlignBytes = ByteBuffer.allocate(8).order(ByteOrder.LITTLE_ENDIAN).putLong(16384L).array()
+                        System.arraycopy(newAlignBytes, 0, bytes, pAlignOffset, 8)
+                        modified = true
+                      }
+                    }
+                  }
+                }
+              } else {
+                val phoff = ByteBuffer.wrap(bytes, 28, 4).order(ByteOrder.LITTLE_ENDIAN).int
+                val phentsize = ByteBuffer.wrap(bytes, 42, 2).order(ByteOrder.LITTLE_ENDIAN).short.toInt()
+                val phnum = ByteBuffer.wrap(bytes, 44, 2).order(ByteOrder.LITTLE_ENDIAN).short.toInt()
+
+                for (i in 0 until phnum) {
+                  val offset = phoff + (i * phentsize)
+                  if (offset + 32 <= bytes.size) {
+                    val pType = ByteBuffer.wrap(bytes, offset, 4).order(ByteOrder.LITTLE_ENDIAN).int
+                    if (pType == 1) { // PT_LOAD
+                      val pAlignOffset = offset + 28
+                      val pAlign = ByteBuffer.wrap(bytes, pAlignOffset, 4).order(ByteOrder.LITTLE_ENDIAN).int
+                      if (pAlign < 16384) {
+                        val newAlignBytes = ByteBuffer.allocate(4).order(ByteOrder.LITTLE_ENDIAN).putInt(16384).array()
+                        System.arraycopy(newAlignBytes, 0, bytes, pAlignOffset, 4)
+                        modified = true
+                      }
+                    }
+                  }
+                }
+              }
+              if (modified) {
+                soFile.writeBytes(bytes)
+                logger.quiet("16KB Alignment: Patched ${soFile.name} in ${soFile.parentFile.name} to 16 KB (0x4000)")
+              }
+            }
+          } catch (e: Exception) {
+            logger.warn("Failed to patch 16KB alignment for ${soFile.name}: ${e.message}")
+          }
+        }
+      }
+    }
+  }
+}
+
+tasks.matching { it.name.startsWith("strip") || it.name.startsWith("merge") }.configureEach {
+  finalizedBy("alignNativeLibs16KB")
+}
+
+tasks.matching { it.name == "packageReleaseBundle" || it.name == "packageRelease" }.configureEach {
+  dependsOn("alignNativeLibs16KB")
 }
 
 

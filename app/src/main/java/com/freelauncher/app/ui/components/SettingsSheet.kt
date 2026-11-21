@@ -90,7 +90,7 @@ fun SettingsSheet(
     onTimeAwayToggled: (Boolean) -> Unit = {},
     enableSwipeDownSearch: Boolean = false,
     onSwipeDownSearchToggled: (Boolean) -> Unit = {},
-    enableScribbleSearch: Boolean = false,
+    enableScribbleSearch: Boolean = true,
     onScribbleSearchToggled: (Boolean) -> Unit = {},
     scribbleSpeedMs: Int = 300,
     onScribbleSpeedChanged: (Int) -> Unit = {},

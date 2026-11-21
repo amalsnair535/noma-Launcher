@@ -77,9 +77,8 @@ By replacing cluttered app grids, flashy widgets, and notification traps with a 
 • Gradient Studio: Design your own multi-color atmospheric wallpaper gradients or pick photos from your device gallery with custom dimming scrims.
 • Font Selection: Choose from multiple custom typography styles including Minimal Sans, Serif, and Monospace.
 
-🔒 PRIVACY & ACCESSIBILITY
+🔒 PRIVACY
 • 100% Local & Private: Your data stays on your phone. No tracking, no ads, and no external data collection.
-• Accessibility Service Usage: .noma Launcher uses an optional Accessibility Service solely to enable a double-tap gesture on empty home screen space to turn off and lock your display. No personal or behavioral data is collected or monitored.
 ```
 
 ---
