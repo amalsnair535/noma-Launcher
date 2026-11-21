@@ -39,7 +39,7 @@ FREE Launcher uses an intuitive **spatial direction map** for seamless one-hande
 | **Swipe Down** | Open **Universal Search** immediately |
 | **Swipe Left** | Navigate to the **RSS News Feed Screen** |
 | **Swipe Right** | Navigate to the **Time Away (Digital Wellbeing)** screen |
-| **Double-Tap Background** | Turn off / lock display (via `NomaAccessibilityService`) |
+| **Double-Tap Background** | Custom Home Gesture |
 | **Triple-Tap Background** | Toggle **UltraFocus Mode** (lock to pinned apps only) |
 | **Long-Press Background** | Open **Settings & Customization Sheet** |
 | **Long-Press Time / Clock** | Enter **Clock Edit & Drag-to-Place Mode** |
@@ -94,9 +94,7 @@ FREE Launcher uses an intuitive **spatial direction map** for seamless one-hande
    - Forces a 5-second breathing pause before launching social, gaming, media, or shopping apps. Gives users time to reconsider impulsive app opening.
 2. **UltraFocus Mode (Pin Lock)**
    - Lock navigation strictly to the 6 pinned apps. Blocks access to drawer, settings, and other apps. Exit requires a triple-tap gesture.
-3. **Double-Tap to Sleep**
-   - Built-in `NomaAccessibilityService` lets users double-tap empty space on the home screen to turn off and lock the device display immediately. Includes Android-compliant prominent disclosure modal.
-4. **App Lock Protection (PIN & Biometrics)**
+3. **App Lock Protection (PIN & Biometrics)**
    - Protect access to the All Apps drawer and Settings Sheet with either a custom 4-digit secret PIN or System Biometrics (Fingerprint / Face Unlock).
 
 ---
@@ -147,7 +145,6 @@ FREE Launcher uses an intuitive **spatial direction map** for seamless one-hande
 | **Local Database** | Room ORM (Notes, Calendar Events, RSS Feeds & Articles, Focus Sessions, Wallpapers, Settings) |
 | **Asynchronous Logic** | Kotlin Coroutines & Flow |
 | **Image Loading** | Coil Compose |
-| **Accessibility Service** | `NomaAccessibilityService` (for Double-Tap Screen Lock) |
 | **Hardware Integration** | BiometricPrompt API, Android UsageStatsManager, BatteryManager BroadcastReceiver |
 | **Build Tooling** | Gradle Kotlin DSL (`build.gradle.kts`) |
 | **Unit & UI Testing** | JUnit, Robolectric, Screenshot Testing |

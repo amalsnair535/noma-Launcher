@@ -27,8 +27,8 @@ android {
     applicationId = "com.freelauncher.app"
     minSdk = 24
     targetSdk = 37
-    versionCode = 45
-    versionName = "5.4"
+    versionCode = 48
+    versionName = "5.6"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }

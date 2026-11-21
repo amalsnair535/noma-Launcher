@@ -195,16 +195,20 @@ fun HomeScreen(
                 )
             }
             .scribbleInputHandler(
-                enabled = !isEditMode && state.enableScribbleSearch,
+                enabled = !isEditMode,
                 screenWidthPx = screenWidthPx,
                 isResultViewActive = scribbleState.isActive,
                 onStrokeStarted = { pt ->
-                    lastScribbleTime = System.currentTimeMillis()
-                    onScribbleStrokeStarted(pt)
+                    if (state.enableScribbleSearch) {
+                        lastScribbleTime = System.currentTimeMillis()
+                        onScribbleStrokeStarted(pt)
+                    }
                 },
                 onStrokeUpdated = { pt ->
-                    lastScribbleTime = System.currentTimeMillis()
-                    onScribbleStrokeUpdated(pt)
+                    if (state.enableScribbleSearch) {
+                        lastScribbleTime = System.currentTimeMillis()
+                        onScribbleStrokeUpdated(pt)
+                    }
                 },
                 onStrokeCompleted = { completedPoints, action ->
                     lastScribbleTime = System.currentTimeMillis()
@@ -231,7 +235,11 @@ fun HomeScreen(
                                 if (!scribbleState.isActive && state.showTimeAway) onNavigate(LauncherScreen.TIME_AWAY)
                             }
                             GesturalAction.HANDWRITING_STROKE -> {
-                                onScribbleStrokeCompleted(completedPoints, action, scribbleRecognizer)
+                                if (state.enableScribbleSearch) {
+                                    onScribbleStrokeCompleted(completedPoints, action, scribbleRecognizer)
+                                } else {
+                                    onClearScribble()
+                                }
                             }
                             GesturalAction.NONE -> {
                                 onClearScribble()
