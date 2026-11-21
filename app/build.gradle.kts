@@ -27,8 +27,8 @@ android {
     applicationId = "com.freelauncher.app"
     minSdk = 24
     targetSdk = 37
-    versionCode = 40
-    versionName = "5.0"
+    versionCode = 42
+    versionName = "5.1"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }
@@ -98,9 +98,8 @@ android {
   }
   packaging {
     jniLibs {
-      // Set to true (compressed shared libraries) to ensure 16 KB page size compatibility on Google Play
-      // for 3rd-party dependencies with prebuilt native libraries (e.g. ML Kit digital ink).
-      useLegacyPackaging = true
+      // Store native libraries uncompressed for 16 KB page boundary zipalign in App Bundles (.aab)
+      useLegacyPackaging = false
     }
   }
 }
